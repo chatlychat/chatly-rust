@@ -40,7 +40,9 @@ impl<'a> Channels<'a> {
     ///
     /// Any [`ChatlyError`]; [`ChatlyError::NotFound`] if no such channel.
     pub fn get(&self, id: &str) -> Result<Value, ChatlyError> {
-        self.client
-            .get(&format!("/v1/channels/{}", encode_path_segment(id)), &Query::new())
+        self.client.get(
+            &format!("/v1/channels/{}", encode_path_segment(id)),
+            &Query::new(),
+        )
     }
 }

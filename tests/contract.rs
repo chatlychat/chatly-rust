@@ -39,8 +39,7 @@ fn s1_a_request_from_a_default_client_goes_to_production() {
 
     let request = mock.only_request();
     assert_eq!(
-        request.url,
-        "https://api.chatlychat.com/v1/api-keys/whoami",
+        request.url, "https://api.chatlychat.com/v1/api-keys/whoami",
         "a client with no base_url override must address production"
     );
     assert!(request.url.starts_with("https://"), "and over TLS");
@@ -279,8 +278,11 @@ fn s4_401_and_403_are_distinguishable_without_parsing_a_message() {
 #[test]
 fn s4_409_raises_conflict_and_5xx_raises_server() {
     let mock = MockTransport::new();
-    mock.push_json(409, r#"{"error":{"code":"conflict","message":"key reused"}}"#)
-        .push_json(500, r#"{"error":{"code":"unknown","message":"boom"}}"#);
+    mock.push_json(
+        409,
+        r#"{"error":{"code":"conflict","message":"key reused"}}"#,
+    )
+    .push_json(500, r#"{"error":{"code":"unknown","message":"boom"}}"#);
     let chatly = client(&mock);
 
     assert!(chatly
@@ -289,7 +291,10 @@ fn s4_409_raises_conflict_and_5xx_raises_server() {
         .unwrap_err()
         .is_conflict());
     assert!(matches!(
-        chatly.contacts().upsert(&serde_json::json!({})).unwrap_err(),
+        chatly
+            .contacts()
+            .upsert(&serde_json::json!({}))
+            .unwrap_err(),
         ChatlyError::Server(_)
     ));
 }
@@ -312,8 +317,12 @@ fn s4_a_transport_failure_is_its_own_type_not_a_status() {
 #[test]
 fn s5_a_429_is_retried_and_then_succeeds() {
     let mock = MockTransport::new();
-    mock.push_with_headers(429, r#"{"error":{"code":"rate_limited"}}"#, &[("retry-after", "0")])
-        .push_json(200, r#"{"id":"c_1"}"#);
+    mock.push_with_headers(
+        429,
+        r#"{"error":{"code":"rate_limited"}}"#,
+        &[("retry-after", "0")],
+    )
+    .push_json(200, r#"{"id":"c_1"}"#);
 
     let out = retrying_client(&mock, 3).contacts().get("c_1").unwrap();
     assert_eq!(out["id"], "c_1");
@@ -324,7 +333,10 @@ fn s5_a_429_is_retried_and_then_succeeds() {
 #[test]
 fn s5_a_400_is_not_retried() {
     let mock = MockTransport::new();
-    mock.push_json(400, r#"{"error":{"code":"validation_failed","message":"bad"}}"#);
+    mock.push_json(
+        400,
+        r#"{"error":{"code":"validation_failed","message":"bad"}}"#,
+    );
 
     let err = retrying_client(&mock, 3).contacts().get("c_1").unwrap_err();
     assert_eq!(err.status(), Some(400));
@@ -342,14 +354,20 @@ fn s5_no_other_4xx_is_retried_either() {
         let mock = MockTransport::new();
         mock.push_json(status, "{}");
         let _ = retrying_client(&mock, 3).contacts().get("c_1");
-        assert_eq!(mock.request_count(), 1, "status {status} must not be retried");
+        assert_eq!(
+            mock.request_count(),
+            1,
+            "status {status} must not be retried"
+        );
     }
 }
 
 #[test]
 fn s5_a_5xx_and_a_connection_error_are_retried_up_to_the_limit() {
     let mock = MockTransport::new();
-    mock.push_json(503, "{}").push_json(503, "{}").push_json(503, "{}");
+    mock.push_json(503, "{}")
+        .push_json(503, "{}")
+        .push_json(503, "{}");
     let err = retrying_client(&mock, 3).contacts().get("c_1").unwrap_err();
     assert_eq!(err.status(), Some(503));
     assert_eq!(mock.request_count(), 3, "three attempts, then give up");
@@ -367,7 +385,9 @@ fn s5_a_5xx_and_a_connection_error_are_retried_up_to_the_limit() {
 #[test]
 fn s5_a_retried_write_reuses_the_same_idempotency_key() {
     let mock = MockTransport::new();
-    mock.push_json(503, "{}").push_json(503, "{}").push_json(201, "{}");
+    mock.push_json(503, "{}")
+        .push_json(503, "{}")
+        .push_json(201, "{}");
 
     retrying_client(&mock, 3)
         .contacts()
@@ -420,8 +440,7 @@ fn s6_the_auto_paginator_walks_two_pages_and_stops_on_a_null_cursor() {
         "https://api.chatlychat.com/v1/contacts?limit=2"
     );
     assert_eq!(
-        requests[1].url,
-        "https://api.chatlychat.com/v1/contacts?limit=2&cursor=cur_2",
+        requests[1].url, "https://api.chatlychat.com/v1/contacts?limit=2&cursor=cur_2",
         "the second page must carry the first page's cursor"
     );
 }

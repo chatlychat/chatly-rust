@@ -176,7 +176,11 @@ fn s9_rejects_the_same_delivery_signed_over_the_body_alone() {
         &VerifyOptions::new().without_tolerance(),
     ));
     // And with the default (live) window, which rejects it for two reasons.
-    assert!(!verify_webhook_signature(PINNED_BODY, body_only, "whsec_test"));
+    assert!(!verify_webhook_signature(
+        PINNED_BODY,
+        body_only,
+        "whsec_test"
+    ));
 }
 
 /// Prints the digests this implementation produces, so they can be compared

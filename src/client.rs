@@ -256,9 +256,7 @@ impl ChatlyClient {
     pub fn with_idempotency_key(&self, key: impl Into<String>) -> Result<Self, ChatlyError> {
         let key = key.into();
         if key.trim().is_empty() {
-            return Err(ChatlyError::Config(
-                "idempotency key is empty".to_owned(),
-            ));
+            return Err(ChatlyError::Config("idempotency key is empty".to_owned()));
         }
         Ok(Self {
             inner: Arc::new(Inner {
@@ -538,7 +536,13 @@ impl ChatlyClient {
             headers.push(("idempotency-key".to_owned(), key));
         }
 
-        let request = HttpRequest { method, url, headers, body, timeout: self.inner.timeout };
+        let request = HttpRequest {
+            method,
+            url,
+            headers,
+            body,
+            timeout: self.inner.timeout,
+        };
 
         let max_attempts = self.inner.retry.max_attempts.max(1);
         let mut attempt = 1u32;
@@ -604,7 +608,13 @@ mod tests {
     #[test]
     fn the_default_base_url_is_production() {
         assert_eq!(DEFAULT_BASE_URL, "https://api.chatlychat.com");
-        for bad in ["livechat.local", "chatly.example", "localhost", "127.0.0.1", "example"] {
+        for bad in [
+            "livechat.local",
+            "chatly.example",
+            "localhost",
+            "127.0.0.1",
+            "example",
+        ] {
             assert!(
                 !DEFAULT_BASE_URL.contains(bad),
                 "default base url must not reference {bad}"
@@ -639,5 +649,4 @@ mod tests {
         assert!(matches!(err, ChatlyError::Decode { .. }));
         assert!(err.body().unwrap_or_default().contains("7"));
     }
-
 }

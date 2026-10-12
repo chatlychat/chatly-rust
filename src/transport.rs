@@ -72,7 +72,11 @@ impl HttpResponse {
             .into_iter()
             .map(|(key, value)| (key.to_ascii_lowercase(), value))
             .collect();
-        Self { status, headers, body }
+        Self {
+            status,
+            headers,
+            body,
+        }
     }
 
     /// Build a response with a JSON content type. Convenience for tests and
@@ -151,7 +155,9 @@ impl UreqTransport {
             .https_only(false)
             .timeout_global(Some(timeout))
             .build();
-        Self { agent: config.new_agent() }
+        Self {
+            agent: config.new_agent(),
+        }
     }
 
     /// A transport over an agent you configured yourself.
@@ -205,7 +211,11 @@ impl Transport for UreqTransport {
             .read_to_vec()
             .map_err(|err| ChatlyError::transport_from("could not read response body", err))?;
 
-        Ok(HttpResponse { status, headers, body })
+        Ok(HttpResponse {
+            status,
+            headers,
+            body,
+        })
     }
 }
 

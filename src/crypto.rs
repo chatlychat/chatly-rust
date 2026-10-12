@@ -51,13 +51,20 @@ pub(crate) struct Sha256 {
 
 impl Sha256 {
     pub(crate) fn new() -> Self {
-        Self { state: H0, block: [0u8; BLOCK_LEN], block_len: 0, total_bits: 0 }
+        Self {
+            state: H0,
+            block: [0u8; BLOCK_LEN],
+            block_len: 0,
+            total_bits: 0,
+        }
     }
 
     pub(crate) fn update(&mut self, mut data: &[u8]) {
         // `wrapping_mul` only to keep the arithmetic total; a 2^61-byte input
         // is not reachable and the length field is defined modulo 2^64 anyway.
-        self.total_bits = self.total_bits.wrapping_add((data.len() as u64).wrapping_mul(8));
+        self.total_bits = self
+            .total_bits
+            .wrapping_add((data.len() as u64).wrapping_mul(8));
         while !data.is_empty() {
             let take = core::cmp::min(BLOCK_LEN - self.block_len, data.len());
             self.block[self.block_len..self.block_len + take].copy_from_slice(&data[..take]);
@@ -134,11 +141,7 @@ impl Sha256 {
             b = a;
             a = t1.wrapping_add(t2);
         }
-        for (slot, value) in self
-            .state
-            .iter_mut()
-            .zip([a, b, c, d, e, f, g, h])
-        {
+        for (slot, value) in self.state.iter_mut().zip([a, b, c, d, e, f, g, h]) {
             *slot = slot.wrapping_add(value);
         }
     }
@@ -274,7 +277,9 @@ pub(crate) fn random_bytes(out: &mut [u8]) {
     let mut seed = nanos
         ^ (u64::from(std::process::id()) << 32)
         ^ stack_probe
-        ^ COUNTER.fetch_add(1, Ordering::Relaxed).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+        ^ COUNTER
+            .fetch_add(1, Ordering::Relaxed)
+            .wrapping_mul(0x9e37_79b9_7f4a_7c15);
 
     for chunk in out.chunks_mut(8) {
         // SplitMix64.
@@ -348,11 +353,26 @@ mod tests {
         // still fit in this block" boundary (56) and the block boundary (64).
         // Independently generated with `openssl dgst -sha256`.
         for (len, expected) in [
-            (55usize, "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318"),
-            (56, "b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a"),
-            (63, "7d3e74a05d7db15bce4ad9ec0658ea98e3f06eeecf16b4c6fff2da457ddc2f34"),
-            (64, "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb"),
-            (65, "635361c48bb9eab14198e76ea8ab7f1a41685d6ad62aa9146d301d4f17eb0ae0"),
+            (
+                55usize,
+                "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318",
+            ),
+            (
+                56,
+                "b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a",
+            ),
+            (
+                63,
+                "7d3e74a05d7db15bce4ad9ec0658ea98e3f06eeecf16b4c6fff2da457ddc2f34",
+            ),
+            (
+                64,
+                "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb",
+            ),
+            (
+                65,
+                "635361c48bb9eab14198e76ea8ab7f1a41685d6ad62aa9146d301d4f17eb0ae0",
+            ),
         ] {
             assert_eq!(hex_encode(&sha256(&vec![b'a'; len])), expected, "len {len}");
         }
@@ -382,7 +402,10 @@ mod tests {
     fn hmac_hashes_an_oversized_key() {
         let key = [0xaau8; 131];
         assert_eq!(
-            hex_encode(&hmac_sha256(&key, &[b"Test Using Larger Than Block-Size Key - Hash Key First"])),
+            hex_encode(&hmac_sha256(
+                &key,
+                &[b"Test Using Larger Than Block-Size Key - Hash Key First"]
+            )),
             "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54"
         );
     }
@@ -426,7 +449,10 @@ mod tests {
         );
         assert!(a.chars().all(|c| c.is_ascii_hexdigit() || c == '-'));
         assert_eq!(&a[14..15], "4", "version nibble");
-        assert!(matches!(&a[19..20], "8" | "9" | "a" | "b"), "variant nibble");
+        assert!(
+            matches!(&a[19..20], "8" | "9" | "a" | "b"),
+            "variant nibble"
+        );
     }
 
     #[test]

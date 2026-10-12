@@ -53,7 +53,10 @@ impl<T> Page<T> {
 
 impl<T> Default for Page<T> {
     fn default() -> Self {
-        Self { items: Vec::new(), next_cursor: None }
+        Self {
+            items: Vec::new(),
+            next_cursor: None,
+        }
     }
 }
 
@@ -246,10 +249,7 @@ mod tests {
 
     #[test]
     fn walks_two_pages_and_stops_on_a_null_cursor() {
-        let (iter, seen) = scripted(vec![
-            page(&["a", "b"], Some("c1")),
-            page(&["c"], None),
-        ]);
+        let (iter, seen) = scripted(vec![page(&["a", "b"], Some("c1")), page(&["c"], None)]);
         let items: Vec<String> = iter.map(|r| r.unwrap()).collect();
         assert_eq!(items, vec!["a", "b", "c"]);
         assert_eq!(
@@ -271,7 +271,11 @@ mod tests {
             Ok(page(&["x"], Some("stuck")))
         });
         let items: Vec<String> = iter.map(|r| r.unwrap()).collect();
-        assert_eq!(items, vec!["x", "x"], "one page, then the repeat is refused");
+        assert_eq!(
+            items,
+            vec!["x", "x"],
+            "one page, then the repeat is refused"
+        );
         assert_eq!(*calls.lock().unwrap(), 2);
     }
 
@@ -306,7 +310,9 @@ mod tests {
         let calls = Arc::new(Mutex::new(0usize));
         let counter = Arc::clone(&calls);
         let iter = PageIter::new(None, move |_cursor| {
-            let mut n = counter.lock().map_err(|_| ChatlyError::transport("poisoned"))?;
+            let mut n = counter
+                .lock()
+                .map_err(|_| ChatlyError::transport("poisoned"))?;
             *n += 1;
             if *n == 1 {
                 Ok(page(&["a"], Some("c1")))

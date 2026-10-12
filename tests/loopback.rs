@@ -53,7 +53,12 @@ struct Canned {
 
 impl Canned {
     fn json(status: u16, reason: &'static str, body: &'static str) -> Self {
-        Self { status, reason, headers: Vec::new(), body }
+        Self {
+            status,
+            reason,
+            headers: Vec::new(),
+            body,
+        }
     }
 
     fn with_header(mut self, name: &'static str, value: &str) -> Self {
@@ -201,8 +206,9 @@ fn a_real_404_keeps_its_status_body_and_request_id() {
 
 #[test]
 fn a_redirect_is_not_followed_so_the_bearer_token_stays_put() {
-    let (base, rx) = serve(vec![Canned::json(302, "Found", "{}")
-        .with_header("location", "http://127.0.0.1:1/elsewhere")]);
+    let (base, rx) =
+        serve(vec![Canned::json(302, "Found", "{}")
+            .with_header("location", "http://127.0.0.1:1/elsewhere")]);
 
     let err = client(&base).contacts().get("c_1").unwrap_err();
     assert!(matches!(err, ChatlyError::Api(_)), "{err:?}");
@@ -243,8 +249,12 @@ fn a_repeated_query_key_survives_the_real_wire() {
 #[test]
 fn a_real_429_is_retried_over_http_and_reuses_the_idempotency_key() {
     let (base, rx) = serve(vec![
-        Canned::json(429, "Too Many Requests", r#"{"error":{"code":"rate_limited"}}"#)
-            .with_header("retry-after", "0"),
+        Canned::json(
+            429,
+            "Too Many Requests",
+            r#"{"error":{"code":"rate_limited"}}"#,
+        )
+        .with_header("retry-after", "0"),
         Canned::json(201, "Created", r#"{"id":"c_1"}"#),
     ]);
     let chatly = ChatlyClient::builder("ck_loopback_key")

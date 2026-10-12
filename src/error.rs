@@ -40,7 +40,10 @@ impl ApiError {
     /// message. Never fails: an unparseable body still yields a usable error.
     pub(crate) fn from_response(status: u16, body: String, request_id: Option<String>) -> Self {
         let parsed: Option<serde_json::Value> = serde_json::from_str(&body).ok();
-        let envelope = parsed.as_ref().and_then(|v| v.get("error")).or(parsed.as_ref());
+        let envelope = parsed
+            .as_ref()
+            .and_then(|v| v.get("error"))
+            .or(parsed.as_ref());
         let code = envelope
             .and_then(|v| v.get("code"))
             .and_then(|v| v.as_str())
@@ -50,7 +53,13 @@ impl ApiError {
             .and_then(|v| v.as_str())
             .map(str::to_owned)
             .unwrap_or_else(|| format!("HTTP {status}"));
-        Self { status, code, message, request_id, body }
+        Self {
+            status,
+            code,
+            message,
+            request_id,
+            body,
+        }
     }
 }
 
@@ -137,7 +146,10 @@ impl ChatlyError {
     /// faked as an HTTP status, or the retry policy will treat a DNS failure
     /// as a genuine 503 on every attempt.
     pub fn transport(message: impl Into<String>) -> Self {
-        Self::Transport { message: message.into(), source: None }
+        Self::Transport {
+            message: message.into(),
+            source: None,
+        }
     }
 
     /// Build a transport failure that wraps the underlying error, so
@@ -146,7 +158,10 @@ impl ChatlyError {
         message: impl Into<String>,
         source: impl StdError + Send + Sync + 'static,
     ) -> Self {
-        Self::Transport { message: message.into(), source: Some(Box::new(source)) }
+        Self::Transport {
+            message: message.into(),
+            source: Some(Box::new(source)),
+        }
     }
 
     /// Classify an HTTP response into the right variant.
@@ -186,7 +201,9 @@ impl ChatlyError {
         match self {
             Self::Config(message) => message,
             Self::Transport { message, .. } | Self::Decode { message, .. } => message,
-            _ => self.api_error().map_or("unknown error", |e| e.message.as_str()),
+            _ => self
+                .api_error()
+                .map_or("unknown error", |e| e.message.as_str()),
         }
     }
 
@@ -276,7 +293,9 @@ impl fmt::Display for ChatlyError {
         match self {
             Self::Config(message) => write!(f, "chatly: configuration error: {message}"),
             Self::Transport { message, .. } => write!(f, "chatly: transport error: {message}"),
-            Self::Decode { message, .. } => write!(f, "chatly: could not decode response: {message}"),
+            Self::Decode { message, .. } => {
+                write!(f, "chatly: could not decode response: {message}")
+            }
             _ => {
                 let Some(error) = self.api_error() else {
                     return write!(f, "chatly: unknown error");

@@ -79,8 +79,7 @@ impl MessageInput {
 ///
 /// `taken_over` is deliberately absent: it is set by a database trigger when
 /// a human takes a thread over, and is not settable through the API.
-pub const AGENT_HANDLING_SETTABLE_STATES: [&str; 3] =
-    ["in_progress", "handed_off", "handled"];
+pub const AGENT_HANDLING_SETTABLE_STATES: [&str; 3] = ["in_progress", "handed_off", "handled"];
 
 /// The `conversations` namespace. Get one from
 /// [`ChatlyClient::conversations`].
@@ -202,7 +201,10 @@ impl<'a> Conversations<'a> {
     /// Any [`ChatlyError`].
     pub fn agent_handling(&self, id: &str) -> Result<Value, ChatlyError> {
         self.client.get(
-            &format!("/v1/conversations/{}/agent-handling", encode_path_segment(id)),
+            &format!(
+                "/v1/conversations/{}/agent-handling",
+                encode_path_segment(id)
+            ),
             &Query::new(),
         )
     }
@@ -234,7 +236,10 @@ impl<'a> Conversations<'a> {
     ) -> Result<Value, ChatlyError> {
         self.client.write(
             "PUT",
-            &format!("/v1/conversations/{}/agent-handling", encode_path_segment(id)),
+            &format!(
+                "/v1/conversations/{}/agent-handling",
+                encode_path_segment(id)
+            ),
             &Query::new(),
             Some(body),
         )
@@ -363,16 +368,8 @@ impl<'a> Conversations<'a> {
     /// # Errors
     ///
     /// Any [`ChatlyError`].
-    pub fn schedule(
-        &self,
-        id: &str,
-        body: &str,
-        send_at: &str,
-    ) -> Result<Value, ChatlyError> {
-        self.schedule_message(
-            id,
-            &serde_json::json!({ "body": body, "sendAt": send_at }),
-        )
+    pub fn schedule(&self, id: &str, body: &str, send_at: &str) -> Result<Value, ChatlyError> {
+        self.schedule_message(id, &serde_json::json!({ "body": body, "sendAt": send_at }))
     }
 
     /// `DELETE /v1/conversations/scheduled-messages/{scheduled_id}` — cancel
@@ -409,10 +406,9 @@ mod tests {
             json,
             serde_json::json!({ "conversationId": "cnv_1", "body": "hi", "kind": "text" })
         );
-        let json = serde_json::to_value(
-            MessageInput::text("cnv_1", "hi").kind(MessageKind::SystemEvent),
-        )
-        .unwrap();
+        let json =
+            serde_json::to_value(MessageInput::text("cnv_1", "hi").kind(MessageKind::SystemEvent))
+                .unwrap();
         assert_eq!(json["kind"], "system_event");
     }
 
@@ -424,10 +420,9 @@ mod tests {
 
     #[test]
     fn attachment_only_is_a_kind() {
-        let json = serde_json::to_value(
-            MessageInput::text("cnv_1", "").kind(MessageKind::AttachmentOnly),
-        )
-        .unwrap();
+        let json =
+            serde_json::to_value(MessageInput::text("cnv_1", "").kind(MessageKind::AttachmentOnly))
+                .unwrap();
         assert_eq!(json["kind"], "attachment_only");
     }
 

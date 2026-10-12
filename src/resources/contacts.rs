@@ -118,8 +118,10 @@ impl<'a> Contacts<'a> {
     ///
     /// Any [`ChatlyError`]; [`ChatlyError::NotFound`] if no such contact.
     pub fn get(&self, id: &str) -> Result<Value, ChatlyError> {
-        self.client
-            .get(&format!("/v1/contacts/{}", encode_path_segment(id)), &Query::new())
+        self.client.get(
+            &format!("/v1/contacts/{}", encode_path_segment(id)),
+            &Query::new(),
+        )
     }
 
     /// `POST /v1/contacts` — create or update one contact.
@@ -206,9 +208,7 @@ impl<'a> Contacts<'a> {
     /// Any [`ChatlyError`], plus [`ChatlyError::Config`] if `tags` is empty.
     pub fn add_tags(&self, id: &str, tags: &[&str]) -> Result<Value, ChatlyError> {
         let Some((last, rest)) = tags.split_last() else {
-            return Err(ChatlyError::Config(
-                "add_tags: no tags given".to_owned(),
-            ));
+            return Err(ChatlyError::Config("add_tags: no tags given".to_owned()));
         };
         for tag in rest {
             self.add_tag(id, tag)?;
@@ -272,8 +272,10 @@ impl<'a> Contacts<'a> {
     ///
     /// Any [`ChatlyError`].
     pub fn journey(&self, id: &str, query: &Query) -> Result<Value, ChatlyError> {
-        self.client
-            .get(&format!("/v1/contacts/{}/journey", encode_path_segment(id)), query)
+        self.client.get(
+            &format!("/v1/contacts/{}/journey", encode_path_segment(id)),
+            query,
+        )
     }
 }
 
@@ -298,18 +300,24 @@ mod tests {
 
     #[test]
     fn contact_input_omits_unset_fields_and_uses_camel_case() {
-        let json = serde_json::to_value(ContactInput::new().external_id("u_1").name("Ada"))
-            .unwrap();
-        assert_eq!(json, serde_json::json!({ "externalId": "u_1", "name": "Ada" }));
+        let json =
+            serde_json::to_value(ContactInput::new().external_id("u_1").name("Ada")).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({ "externalId": "u_1", "name": "Ada" })
+        );
     }
 
     #[test]
     fn bulk_envelope_is_a_contacts_array() {
         let json = serde_json::to_value(BulkContactsInput::new(vec![
-            ContactInput::new().external_id("a"),
+            ContactInput::new().external_id("a")
         ]))
         .unwrap();
-        assert_eq!(json, serde_json::json!({ "contacts": [{ "externalId": "a" }] }));
+        assert_eq!(
+            json,
+            serde_json::json!({ "contacts": [{ "externalId": "a" }] })
+        );
     }
 
     #[test]

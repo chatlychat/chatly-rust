@@ -46,12 +46,18 @@ impl Default for RetryPolicy {
 impl RetryPolicy {
     /// Never retry anything: one attempt, then the error.
     pub fn none() -> Self {
-        Self { max_attempts: 1, ..Self::default() }
+        Self {
+            max_attempts: 1,
+            ..Self::default()
+        }
     }
 
     /// A policy with `max_attempts` attempts and the default backoff.
     pub fn attempts(max_attempts: u32) -> Self {
-        Self { max_attempts, ..Self::default() }
+        Self {
+            max_attempts,
+            ..Self::default()
+        }
     }
 
     /// How long to wait before attempt `attempt + 1`.
@@ -76,7 +82,11 @@ impl RetryPolicy {
             return Duration::ZERO;
         }
         let half = capped / 2;
-        let jitter = if half == 0 { 0 } else { crypto::random_u64() % half };
+        let jitter = if half == 0 {
+            0
+        } else {
+            crypto::random_u64() % half
+        };
         Duration::from_nanos(half.saturating_add(jitter))
     }
 }
@@ -120,7 +130,10 @@ mod tests {
         assert_eq!(parse_retry_after(Some("7")), Some(Duration::from_secs(7)));
         assert_eq!(parse_retry_after(Some(" 7 ")), Some(Duration::from_secs(7)));
         assert_eq!(parse_retry_after(Some("0")), Some(Duration::ZERO));
-        assert_eq!(parse_retry_after(Some("Wed, 21 Oct 2015 07:28:00 GMT")), None);
+        assert_eq!(
+            parse_retry_after(Some("Wed, 21 Oct 2015 07:28:00 GMT")),
+            None
+        );
         assert_eq!(parse_retry_after(Some("-1")), None);
         assert_eq!(parse_retry_after(Some("")), None);
         assert_eq!(parse_retry_after(None), None);
@@ -152,7 +165,10 @@ mod tests {
             Duration::from_secs(1),
             "Retry-After is capped by max_backoff"
         );
-        let ignore = RetryPolicy { respect_retry_after: false, ..policy };
+        let ignore = RetryPolicy {
+            respect_retry_after: false,
+            ..policy
+        };
         assert!(ignore.backoff_for(1, Some(Duration::from_secs(600))) < Duration::from_millis(100));
     }
 

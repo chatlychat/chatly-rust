@@ -100,7 +100,9 @@ mod retry;
 mod transport;
 mod webhooks;
 
-pub use client::{ChatlyClient, ChatlyClientBuilder, DEFAULT_BASE_URL, DEFAULT_TIMEOUT, USER_AGENT};
+pub use client::{
+    ChatlyClient, ChatlyClientBuilder, DEFAULT_BASE_URL, DEFAULT_TIMEOUT, USER_AGENT,
+};
 pub use error::{ApiError, ChatlyError};
 pub use identity::identity_hash;
 pub use pagination::{Page, PageIter};
@@ -113,8 +115,8 @@ pub use webhooks::{
 };
 
 pub use resources::{
-    Billing, BulkContactsInput, Channels, ContactInput, Contacts, Conversations, EventInput, Events,
-    Kb, Macros, MessageInput, MessageKind, Reports, Search, Tickets, Webhooks, Workspace,
+    Billing, BulkContactsInput, Channels, ContactInput, Contacts, Conversations, EventInput,
+    Events, Kb, Macros, MessageInput, MessageKind, Reports, Search, Tickets, Webhooks, Workspace,
     AGENT_HANDLING_SETTABLE_STATES, MACRO_ACTION_KEYS, MACRO_SCOPES, SEARCH_KINDS,
     TICKET_BULK_ACTIONS,
 };

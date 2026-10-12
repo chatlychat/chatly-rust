@@ -47,9 +47,19 @@ fn root_whoami() {
 
 #[test]
 fn contacts_surface() {
-    expect(PAGE, |c| c.contacts().list(&Query::new()), "GET", "/v1/contacts");
+    expect(
+        PAGE,
+        |c| c.contacts().list(&Query::new()),
+        "GET",
+        "/v1/contacts",
+    );
     expect(OBJ, |c| c.contacts().get("c_1"), "GET", "/v1/contacts/c_1");
-    expect(OBJ, |c| c.contacts().upsert(&json!({})), "POST", "/v1/contacts");
+    expect(
+        OBJ,
+        |c| c.contacts().upsert(&json!({})),
+        "POST",
+        "/v1/contacts",
+    );
     expect(
         OBJ,
         |c| c.contacts().bulk_upsert(&json!({ "contacts": [] })),
@@ -90,8 +100,18 @@ fn contacts_surface() {
 
 #[test]
 fn conversations_surface() {
-    expect(PAGE, |c| c.conversations().list(&Query::new()), "GET", "/v1/conversations");
-    expect(OBJ, |c| c.conversations().get("v_1"), "GET", "/v1/conversations/v_1");
+    expect(
+        PAGE,
+        |c| c.conversations().list(&Query::new()),
+        "GET",
+        "/v1/conversations",
+    );
+    expect(
+        OBJ,
+        |c| c.conversations().get("v_1"),
+        "GET",
+        "/v1/conversations/v_1",
+    );
     expect(
         PAGE,
         |c| c.conversations().messages("v_1", &Query::new()),
@@ -118,7 +138,10 @@ fn conversations_surface() {
     );
     expect(
         OBJ,
-        |c| c.conversations().set_agent_handling("v_1", &json!({ "state": "handled" })),
+        |c| {
+            c.conversations()
+                .set_agent_handling("v_1", &json!({ "state": "handled" }))
+        },
         "PUT",
         "/v1/conversations/v_1/agent-handling",
     );
@@ -130,7 +153,10 @@ fn conversations_surface() {
     );
     expect(
         OBJ,
-        |c| c.conversations().generate_reply("v_1", &json!({ "body": "draft" })),
+        |c| {
+            c.conversations()
+                .generate_reply("v_1", &json!({ "body": "draft" }))
+        },
         "POST",
         "/v1/conversations/v_1/generated-replies",
     );
@@ -142,7 +168,10 @@ fn conversations_surface() {
     );
     expect(
         OBJ,
-        |c| c.conversations().schedule("v_1", "later", "2026-10-13T09:00:00Z"),
+        |c| {
+            c.conversations()
+                .schedule("v_1", "later", "2026-10-13T09:00:00Z")
+        },
         "POST",
         "/v1/conversations/v_1/scheduled-messages",
     );
@@ -157,7 +186,12 @@ fn conversations_surface() {
 
 #[test]
 fn tickets_surface() {
-    expect(PAGE, |c| c.tickets().list(&Query::new()), "GET", "/v1/tickets");
+    expect(
+        PAGE,
+        |c| c.tickets().list(&Query::new()),
+        "GET",
+        "/v1/tickets",
+    );
     expect(
         OBJ,
         |c| c.tickets().comments("t_1", &Query::new()),
@@ -170,7 +204,12 @@ fn tickets_surface() {
         "GET",
         "/v1/tickets/for-conversation/v_1",
     );
-    expect(OBJ, |c| c.tickets().queues(&Query::new()), "GET", "/v1/tickets/queues");
+    expect(
+        OBJ,
+        |c| c.tickets().queues(&Query::new()),
+        "GET",
+        "/v1/tickets/queues",
+    );
     expect(
         OBJ,
         |c| c.tickets().merge_loser("t_1", "t_2"),
@@ -185,7 +224,10 @@ fn tickets_surface() {
     );
     expect(
         OBJ,
-        |c| c.tickets().bulk(&json!({ "ids": ["t_1"], "action": "status" })),
+        |c| {
+            c.tickets()
+                .bulk(&json!({ "ids": ["t_1"], "action": "status" }))
+        },
         "POST",
         "/v1/tickets/bulk",
     );
@@ -193,22 +235,57 @@ fn tickets_surface() {
 
 #[test]
 fn macros_surface() {
-    expect(PAGE, |c| c.macros().list(&Query::new()), "GET", "/v1/macros");
+    expect(
+        PAGE,
+        |c| c.macros().list(&Query::new()),
+        "GET",
+        "/v1/macros",
+    );
     expect(OBJ, |c| c.macros().create(&json!({})), "POST", "/v1/macros");
-    expect(OBJ, |c| c.macros().update("m_1", &json!({})), "PATCH", "/v1/macros/m_1");
-    expect(OBJ, |c| c.macros().delete("m_1"), "DELETE", "/v1/macros/m_1");
+    expect(
+        OBJ,
+        |c| c.macros().update("m_1", &json!({})),
+        "PATCH",
+        "/v1/macros/m_1",
+    );
+    expect(
+        OBJ,
+        |c| c.macros().delete("m_1"),
+        "DELETE",
+        "/v1/macros/m_1",
+    );
 }
 
 #[test]
 fn kb_surface() {
-    expect(PAGE, |c| c.kb().articles(&Query::new()), "GET", "/v1/kb/articles");
-    expect(OBJ, |c| c.kb().article("how-to"), "GET", "/v1/kb/articles/how-to");
-    expect(OBJ, |c| c.kb().collections(&Query::new()), "GET", "/v1/kb/collections");
+    expect(
+        PAGE,
+        |c| c.kb().articles(&Query::new()),
+        "GET",
+        "/v1/kb/articles",
+    );
+    expect(
+        OBJ,
+        |c| c.kb().article("how-to"),
+        "GET",
+        "/v1/kb/articles/how-to",
+    );
+    expect(
+        OBJ,
+        |c| c.kb().collections(&Query::new()),
+        "GET",
+        "/v1/kb/collections",
+    );
 }
 
 #[test]
 fn search_surface() {
-    expect(OBJ, |c| c.search().query("refund", &Query::new()), "GET", "/v1/search?q=refund");
+    expect(
+        OBJ,
+        |c| c.search().query("refund", &Query::new()),
+        "GET",
+        "/v1/search?q=refund",
+    );
 }
 
 /// Not a manifest entry — a convenience over the same route. Asserted
@@ -228,7 +305,10 @@ fn search_kb_narrows_with_a_plain_kinds_key() {
     mock.push_json(200, OBJ);
     client(&mock)
         .search()
-        .query("refund", &Query::new().push("kinds", "kb").push("kinds", "ticket"))
+        .query(
+            "refund",
+            &Query::new().push("kinds", "kb").push("kinds", "ticket"),
+        )
         .unwrap();
     assert_eq!(
         mock.only_request().url,
@@ -240,11 +320,19 @@ fn search_kb_narrows_with_a_plain_kinds_key() {
 fn events_surface() {
     expect(
         OBJ,
-        |c| c.events().track(&json!({ "contactId": "c_1", "name": "x" })),
+        |c| {
+            c.events()
+                .track(&json!({ "contactId": "c_1", "name": "x" }))
+        },
         "POST",
         "/v1/cdp/events",
     );
-    expect(PAGE, |c| c.events().list(&Query::new()), "GET", "/v1/cdp/events");
+    expect(
+        PAGE,
+        |c| c.events().list(&Query::new()),
+        "GET",
+        "/v1/cdp/events",
+    );
 }
 
 #[test]
@@ -276,34 +364,84 @@ fn webhooks_surface() {
 
 #[test]
 fn reports_surface() {
-    expect(OBJ, |c| c.reports().overview(&Query::new()), "GET", "/v1/reports/overview");
-    expect(OBJ, |c| c.reports().agents(&Query::new()), "GET", "/v1/reports/agents");
+    expect(
+        OBJ,
+        |c| c.reports().overview(&Query::new()),
+        "GET",
+        "/v1/reports/overview",
+    );
+    expect(
+        OBJ,
+        |c| c.reports().agents(&Query::new()),
+        "GET",
+        "/v1/reports/agents",
+    );
     expect(
         OBJ,
         |c| c.reports().conversations_by_day(&Query::new()),
         "GET",
         "/v1/reports/conversations-by-day",
     );
-    expect(OBJ, |c| c.reports().sla(&Query::new()), "GET", "/v1/reports/sla");
+    expect(
+        OBJ,
+        |c| c.reports().sla(&Query::new()),
+        "GET",
+        "/v1/reports/sla",
+    );
 }
 
 #[test]
 fn channels_surface() {
-    expect(OBJ, |c| c.channels().list(&Query::new()), "GET", "/v1/channels");
-    expect(OBJ, |c| c.channels().get("ch_1"), "GET", "/v1/channels/ch_1");
+    expect(
+        OBJ,
+        |c| c.channels().list(&Query::new()),
+        "GET",
+        "/v1/channels",
+    );
+    expect(
+        OBJ,
+        |c| c.channels().get("ch_1"),
+        "GET",
+        "/v1/channels/ch_1",
+    );
 }
 
 #[test]
 fn billing_surface() {
-    expect(OBJ, |c| c.billing().plans(&Query::new()), "GET", "/v1/billing/plans");
-    expect(OBJ, |c| c.billing().usage(&Query::new()), "GET", "/v1/billing/usage");
+    expect(
+        OBJ,
+        |c| c.billing().plans(&Query::new()),
+        "GET",
+        "/v1/billing/plans",
+    );
+    expect(
+        OBJ,
+        |c| c.billing().usage(&Query::new()),
+        "GET",
+        "/v1/billing/usage",
+    );
 }
 
 #[test]
 fn workspace_surface() {
-    expect(OBJ, |c| c.workspace().settings(), "GET", "/v1/workspace/settings");
-    expect(OBJ, |c| c.workspace().labels(&Query::new()), "GET", "/v1/labels");
-    expect(OBJ, |c| c.workspace().inboxes(&Query::new()), "GET", "/v1/inboxes");
+    expect(
+        OBJ,
+        |c| c.workspace().settings(),
+        "GET",
+        "/v1/workspace/settings",
+    );
+    expect(
+        OBJ,
+        |c| c.workspace().labels(&Query::new()),
+        "GET",
+        "/v1/labels",
+    );
+    expect(
+        OBJ,
+        |c| c.workspace().inboxes(&Query::new()),
+        "GET",
+        "/v1/inboxes",
+    );
     expect(
         OBJ,
         |c| c.workspace().team_members("tm_1", &Query::new()),
@@ -369,7 +507,9 @@ fn unsubscribe_sends_a_boolean_and_omits_an_absent_reason() {
     );
     assert_eq!(
         sent_body(|c| {
-            let _ = c.contacts().unsubscribe("c_1", false, Some("asked to return"));
+            let _ = c
+                .contacts()
+                .unsubscribe("c_1", false, Some("asked to return"));
         }),
         json!({ "unsubscribed": false, "reason": "asked to return" })
     );
@@ -379,7 +519,9 @@ fn unsubscribe_sends_a_boolean_and_omits_an_absent_reason() {
 fn schedule_sends_body_and_send_at() {
     assert_eq!(
         sent_body(|c| {
-            let _ = c.conversations().schedule("v_1", "later", "2026-10-13T09:00:00Z");
+            let _ = c
+                .conversations()
+                .schedule("v_1", "later", "2026-10-13T09:00:00Z");
         }),
         json!({ "body": "later", "sendAt": "2026-10-13T09:00:00Z" })
     );
@@ -389,7 +531,9 @@ fn schedule_sends_body_and_send_at() {
 fn set_agent_handling_state_sends_state_and_refuses_an_unsettable_one() {
     assert_eq!(
         sent_body(|c| {
-            let _ = c.conversations().set_agent_handling_state("v_1", "handed_off", Some("why"));
+            let _ = c
+                .conversations()
+                .set_agent_handling_state("v_1", "handed_off", Some("why"));
         }),
         json!({ "state": "handed_off", "reason": "why" })
     );
@@ -411,15 +555,23 @@ fn set_agent_handling_state_sends_state_and_refuses_an_unsettable_one() {
 #[test]
 fn add_tags_issues_one_request_per_tag_and_refuses_an_empty_list() {
     let mock = MockTransport::new();
-    mock.push_json(200, OBJ).push_json(200, OBJ).push_json(200, OBJ);
-    client(&mock).contacts().add_tags("c_1", &["a", "b", "c"]).unwrap();
+    mock.push_json(200, OBJ)
+        .push_json(200, OBJ)
+        .push_json(200, OBJ);
+    client(&mock)
+        .contacts()
+        .add_tags("c_1", &["a", "b", "c"])
+        .unwrap();
     assert_eq!(mock.request_count(), 3, "the route takes one tag per call");
     let bodies: Vec<String> = mock
         .requests()
         .iter()
         .filter_map(chatly::HttpRequest::body_text)
         .collect();
-    assert_eq!(bodies, vec![r#"{"tag":"a"}"#, r#"{"tag":"b"}"#, r#"{"tag":"c"}"#]);
+    assert_eq!(
+        bodies,
+        vec![r#"{"tag":"a"}"#, r#"{"tag":"b"}"#, r#"{"tag":"c"}"#]
+    );
 
     let empty = MockTransport::new();
     assert!(client(&empty).contacts().add_tags("c_1", &[]).is_err());
@@ -436,7 +588,12 @@ fn repeated_query_keys_stay_repeated_on_the_wire() {
     mock.push_json(200, PAGE);
     client(&mock)
         .contacts()
-        .list(&Query::new().filter("status:eq:active").filter("plan:eq:pro").limit(10))
+        .list(
+            &Query::new()
+                .filter("status:eq:active")
+                .filter("plan:eq:pro")
+                .limit(10),
+        )
         .unwrap();
     assert_eq!(
         mock.only_request().url,
@@ -451,7 +608,10 @@ fn repeated_query_keys_stay_repeated_on_the_wire() {
 fn path_parameters_are_percent_encoded() {
     let mock = MockTransport::new();
     mock.push_json(200, OBJ);
-    client(&mock).contacts().remove_tag("c_1", "vip customer/eu").unwrap();
+    client(&mock)
+        .contacts()
+        .remove_tag("c_1", "vip customer/eu")
+        .unwrap();
     assert_eq!(
         mock.only_request().url,
         format!("{BASE}/v1/contacts/c_1/tags/vip%20customer%2Feu")

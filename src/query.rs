@@ -177,7 +177,9 @@ mod tests {
 
     #[test]
     fn repeated_keys_stay_repeated() {
-        let q = Query::new().push("kinds[]", "kb").push("kinds[]", "article");
+        let q = Query::new()
+            .push("kinds[]", "kb")
+            .push("kinds[]", "article");
         assert_eq!(q.len(), 2);
         assert_eq!(q.to_query_string(), "kinds%5B%5D=kb&kinds%5B%5D=article");
     }

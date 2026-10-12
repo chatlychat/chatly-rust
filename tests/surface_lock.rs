@@ -200,7 +200,9 @@ fn invocations() -> Vec<(&'static str, &'static str, fn(&ChatlyClient))> {
             let _ = c.macros().list(&Query::new());
         }),
         ("macros", "create", |c| {
-            let _ = c.macros().create(&json!({ "name": "m", "scope": "workspace" }));
+            let _ = c
+                .macros()
+                .create(&json!({ "name": "m", "scope": "workspace" }));
         }),
         ("macros", "update", |c| {
             let _ = c.macros().update("m_1", &json!({ "name": "m2" }));
@@ -516,5 +518,9 @@ fn the_manifest_helpers_exist() {
 
     // Reached by name, so these lines fail to compile if either is renamed.
     assert!(chatly::identity_hash("sek_test_secret", "user_42").is_ok());
-    assert!(!chatly::verify_webhook_signature(b"{}", "t=1,v1=ab", "whsec_test"));
+    assert!(!chatly::verify_webhook_signature(
+        b"{}",
+        "t=1,v1=ab",
+        "whsec_test"
+    ));
 }

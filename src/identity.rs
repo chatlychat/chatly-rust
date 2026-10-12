@@ -88,7 +88,9 @@ mod tests {
     fn the_output_is_lowercase_hex_of_the_right_length() {
         let hash = identity_hash("sek_test_secret", "user_42").unwrap();
         assert_eq!(hash.len(), 64);
-        assert!(hash.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        assert!(hash
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
     }
 
     #[test]

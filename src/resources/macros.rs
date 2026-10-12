@@ -112,8 +112,10 @@ impl<'a> Macros<'a> {
     ///
     /// Any [`ChatlyError`]; [`ChatlyError::NotFound`] if no such macro.
     pub fn delete(&self, id: &str) -> Result<Value, ChatlyError> {
-        self.client
-            .delete(&format!("/v1/macros/{}", encode_path_segment(id)), &Query::new())
+        self.client.delete(
+            &format!("/v1/macros/{}", encode_path_segment(id)),
+            &Query::new(),
+        )
     }
 }
 

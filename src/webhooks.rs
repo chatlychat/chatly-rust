@@ -334,7 +334,12 @@ mod tests {
             "whsec_other",
             &pinned()
         ));
-        assert!(!verify_webhook_signature_with(PINNED_BODY, PINNED_HEADER, "", &pinned()));
+        assert!(!verify_webhook_signature_with(
+            PINNED_BODY,
+            PINNED_HEADER,
+            "",
+            &pinned()
+        ));
     }
 
     #[test]
@@ -364,7 +369,12 @@ mod tests {
     #[test]
     fn accepts_a_str_a_string_and_bytes_alike() {
         let as_str = r#"{"id":"evt_1"}"#;
-        assert!(verify_webhook_signature_with(as_str, PINNED_HEADER, PINNED_SECRET, &pinned()));
+        assert!(verify_webhook_signature_with(
+            as_str,
+            PINNED_HEADER,
+            PINNED_SECRET,
+            &pinned()
+        ));
         assert!(verify_webhook_signature_with(
             as_str.to_owned(),
             PINNED_HEADER,
@@ -382,7 +392,12 @@ mod tests {
     #[test]
     fn tolerates_extra_fields_and_whitespace() {
         let header = " t=1700000000 , v1=c89214b5b5da833daed6f0b8c5bb6bd58cea9022bd80ccc78230f3942d632925 , v2=future ";
-        assert!(verify_webhook_signature_with(PINNED_BODY, header, PINNED_SECRET, &pinned()));
+        assert!(verify_webhook_signature_with(
+            PINNED_BODY,
+            header,
+            PINNED_SECRET,
+            &pinned()
+        ));
     }
 
     #[test]
@@ -391,7 +406,12 @@ mod tests {
             "t=1700000000,v1={}",
             "c89214b5b5da833daed6f0b8c5bb6bd58cea9022bd80ccc78230f3942d632925".to_uppercase()
         );
-        assert!(verify_webhook_signature_with(PINNED_BODY, &header, PINNED_SECRET, &pinned()));
+        assert!(verify_webhook_signature_with(
+            PINNED_BODY,
+            &header,
+            PINNED_SECRET,
+            &pinned()
+        ));
     }
 
     #[test]
@@ -399,21 +419,20 @@ mod tests {
         // Not a special case in the code; asserted so it stays that way.
         let digest = crypto::hmac_sha256(b"whsec_test", &[b"1700000000."]);
         let header = format!("t=1700000000,v1={}", crypto::hex_encode(&digest));
-        assert!(verify_webhook_signature_with(b"", &header, PINNED_SECRET, &pinned()));
+        assert!(verify_webhook_signature_with(
+            b"",
+            &header,
+            PINNED_SECRET,
+            &pinned()
+        ));
     }
 
     #[test]
     fn parse_header_requires_both_fields() {
-        assert_eq!(
-            parse_signature_header("t=1,v1=ab"),
-            Some(("1", "ab"))
-        );
+        assert_eq!(parse_signature_header("t=1,v1=ab"), Some(("1", "ab")));
         assert_eq!(parse_signature_header("v1=ab"), None);
         assert_eq!(parse_signature_header("t=1"), None);
         // First occurrence wins, so an appended duplicate cannot override.
-        assert_eq!(
-            parse_signature_header("t=1,v1=ab,v1=cd"),
-            Some(("1", "ab"))
-        );
+        assert_eq!(parse_signature_header("t=1,v1=ab,v1=cd"), Some(("1", "ab")));
     }
 }

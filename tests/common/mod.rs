@@ -36,12 +36,7 @@ impl MockTransport {
     }
 
     /// Queue a response with extra headers.
-    pub fn push_with_headers(
-        &self,
-        status: u16,
-        body: &str,
-        headers: &[(&str, &str)],
-    ) -> &Self {
+    pub fn push_with_headers(&self, status: u16, body: &str, headers: &[(&str, &str)]) -> &Self {
         let mut all = vec![("content-type".to_owned(), "application/json".to_owned())];
         all.extend(
             headers

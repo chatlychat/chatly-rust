@@ -83,10 +83,8 @@ impl<'a> Search<'a> {
     ///
     /// Any [`ChatlyError`].
     pub fn kb(&self, q: &str, query: &Query) -> Result<Value, ChatlyError> {
-        self.client.get(
-            "/v1/search",
-            &query.clone().set("q", q).push("kinds", "kb"),
-        )
+        self.client
+            .get("/v1/search", &query.clone().set("q", q).push("kinds", "kb"))
     }
 }
 

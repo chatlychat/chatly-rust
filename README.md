@@ -137,9 +137,10 @@ instead — `err.is_not_found()`, `err.is_rate_limited()`, `err.status()`,
 `err.is_retryable()`.
 
 Quote `request_id` when you contact support: it is the `x-request-id`
-response header, and it is how we find your request in our logs. It is
-`None` when the deployment does not set that header, which a self-hosted
-install behind no reverse proxy generally will not.
+response header, and it is how we find your request in our logs. The API
+mints one per request and sends the header on every response, errors
+included, so it is normally there; it is `None` for a failure that never
+got a response at all.
 
 ### Retries
 
@@ -540,16 +541,18 @@ All read-only: every write on these surfaces needs a signed-in person.
 
 ---
 
-## Self-hosting
+## Pointing at another environment
 
 ```rust
 let chatly = ChatlyClient::builder(key)
-    .base_url("https://chat.internal.example:8443")
+    .base_url("http://127.0.0.1:3001")
     .build()?;
 ```
 
-That is the only reason to set `base_url`. The default is
-`https://api.chatlychat.com` and you should leave it alone otherwise.
+Another Chatly environment, or a test server in your own suite — those are
+the reasons to set `base_url`. A trailing slash is trimmed for you. The
+default is `https://api.chatlychat.com` and you should leave it alone
+otherwise.
 
 ## Tests
 

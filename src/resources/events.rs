@@ -117,7 +117,10 @@ mod tests {
     #[test]
     fn event_input_matches_the_track_schema_field_names() {
         let json = serde_json::to_value(EventInput::new("c_1", "order_placed")).unwrap();
-        assert_eq!(json, serde_json::json!({ "contactId": "c_1", "name": "order_placed" }));
+        assert_eq!(
+            json,
+            serde_json::json!({ "contactId": "c_1", "name": "order_placed" })
+        );
         let json = serde_json::to_value(
             EventInput::new("c_1", "order_placed").properties(serde_json::json!({ "n": 1 })),
         )

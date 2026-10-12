@@ -34,9 +34,7 @@ mod workspace;
 pub use billing::Billing;
 pub use channels::Channels;
 pub use contacts::{BulkContactsInput, ContactInput, Contacts};
-pub use conversations::{
-    Conversations, MessageInput, MessageKind, AGENT_HANDLING_SETTABLE_STATES,
-};
+pub use conversations::{Conversations, MessageInput, MessageKind, AGENT_HANDLING_SETTABLE_STATES};
 pub use events::{EventInput, Events};
 pub use kb::Kb;
 pub use macros::{Macros, MACRO_ACTION_KEYS, MACRO_SCOPES};
