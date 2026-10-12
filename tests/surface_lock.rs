@@ -111,71 +111,189 @@ fn invocations() -> Vec<(&'static str, &'static str, Invocation)> {
     vec![
         ("root", "whoami", |c| (c.whoami()).map(|_| ())),
         // -- contacts -----------------------------------------------------
-        ("contacts", "list", |c| (c.contacts().list(&Query::new())).map(|_| ())),
+        ("contacts", "list", |c| {
+            (c.contacts().list(&Query::new())).map(|_| ())
+        }),
         ("contacts", "get", |c| (c.contacts().get("c_1")).map(|_| ())),
-        ("contacts", "upsert", |c| (c.contacts().upsert(&json!({}))).map(|_| ())),
-        ("contacts", "bulk_upsert", |c| (c.contacts().bulk_upsert(&json!({ "contacts": [] }))).map(|_| ())),
-        ("contacts", "merge", |c| (c.contacts().merge("c_1", "c_2")).map(|_| ())),
-        ("contacts", "add_tags", |c| (c.contacts().add_tags("c_1", &["vip"])).map(|_| ())),
-        ("contacts", "remove_tag", |c| (c.contacts().remove_tag("c_1", "vip")).map(|_| ())),
-        ("contacts", "unsubscribe", |c| (c.contacts().unsubscribe("c_1", true, None)).map(|_| ())),
-        ("contacts", "journey", |c| (c.contacts().journey("c_1", &Query::new())).map(|_| ())),
+        ("contacts", "upsert", |c| {
+            (c.contacts().upsert(&json!({}))).map(|_| ())
+        }),
+        ("contacts", "bulk_upsert", |c| {
+            (c.contacts().bulk_upsert(&json!({ "contacts": [] }))).map(|_| ())
+        }),
+        ("contacts", "merge", |c| {
+            (c.contacts().merge("c_1", "c_2")).map(|_| ())
+        }),
+        ("contacts", "add_tags", |c| {
+            (c.contacts().add_tags("c_1", &["vip"])).map(|_| ())
+        }),
+        ("contacts", "remove_tag", |c| {
+            (c.contacts().remove_tag("c_1", "vip")).map(|_| ())
+        }),
+        ("contacts", "unsubscribe", |c| {
+            (c.contacts().unsubscribe("c_1", true, None)).map(|_| ())
+        }),
+        ("contacts", "journey", |c| {
+            (c.contacts().journey("c_1", &Query::new())).map(|_| ())
+        }),
         // -- conversations ------------------------------------------------
-        ("conversations", "list", |c| (c.conversations().list(&Query::new())).map(|_| ())),
-        ("conversations", "get", |c| (c.conversations().get("v_1")).map(|_| ())),
-        ("conversations", "messages", |c| (c.conversations().messages("v_1", &Query::new())).map(|_| ())),
-        ("conversations", "send", |c| (c.conversations().send("v_1", &json!({ "body": "hi" }))).map(|_| ())),
-        ("conversations", "unattended", |c| (c.conversations().unattended(&Query::new())).map(|_| ())),
-        ("conversations", "agent_handling", |c| (c.conversations().agent_handling("v_1")).map(|_| ())),
-        ("conversations", "set_agent_handling", |c| (c .conversations() .set_agent_handling("v_1", &json!({ "state": "handled" }))).map(|_| ())),
-        ("conversations", "generated_replies", |c| (c.conversations().generated_replies("v_1", &Query::new())).map(|_| ())),
-        ("conversations", "generate_reply", |c| (c .conversations() .generate_reply("v_1", &json!({ "body": "draft" }))).map(|_| ())),
-        ("conversations", "scheduled_messages", |c| (c.conversations().scheduled_messages("v_1", &Query::new())).map(|_| ())),
-        ("conversations", "schedule_message", |c| (c.conversations().schedule_message( "v_1", &json!({ "body": "later", "sendAt": "2026-10-13T09:00:00Z" }), )).map(|_| ())),
-        ("conversations", "cancel_scheduled", |c| (c.conversations().cancel_scheduled("s_1")).map(|_| ())),
+        ("conversations", "list", |c| {
+            (c.conversations().list(&Query::new())).map(|_| ())
+        }),
+        ("conversations", "get", |c| {
+            (c.conversations().get("v_1")).map(|_| ())
+        }),
+        ("conversations", "messages", |c| {
+            (c.conversations().messages("v_1", &Query::new())).map(|_| ())
+        }),
+        ("conversations", "send", |c| {
+            (c.conversations().send("v_1", &json!({ "body": "hi" }))).map(|_| ())
+        }),
+        ("conversations", "unattended", |c| {
+            (c.conversations().unattended(&Query::new())).map(|_| ())
+        }),
+        ("conversations", "agent_handling", |c| {
+            (c.conversations().agent_handling("v_1")).map(|_| ())
+        }),
+        ("conversations", "set_agent_handling", |c| {
+            (c.conversations()
+                .set_agent_handling("v_1", &json!({ "state": "handled" })))
+            .map(|_| ())
+        }),
+        ("conversations", "generated_replies", |c| {
+            (c.conversations().generated_replies("v_1", &Query::new())).map(|_| ())
+        }),
+        ("conversations", "generate_reply", |c| {
+            (c.conversations()
+                .generate_reply("v_1", &json!({ "body": "draft" })))
+            .map(|_| ())
+        }),
+        ("conversations", "scheduled_messages", |c| {
+            (c.conversations().scheduled_messages("v_1", &Query::new())).map(|_| ())
+        }),
+        ("conversations", "schedule_message", |c| {
+            (c.conversations().schedule_message(
+                "v_1",
+                &json!({ "body": "later", "sendAt": "2026-10-13T09:00:00Z" }),
+            ))
+            .map(|_| ())
+        }),
+        ("conversations", "cancel_scheduled", |c| {
+            (c.conversations().cancel_scheduled("s_1")).map(|_| ())
+        }),
         // -- tickets ------------------------------------------------------
-        ("tickets", "list", |c| (c.tickets().list(&Query::new())).map(|_| ())),
-        ("tickets", "comments", |c| (c.tickets().comments("t_1", &Query::new())).map(|_| ())),
-        ("tickets", "for_conversation", |c| (c.tickets().for_conversation("v_1")).map(|_| ())),
-        ("tickets", "queues", |c| (c.tickets().queues(&Query::new())).map(|_| ())),
-        ("tickets", "merge", |c| (c.tickets().merge("t_1", &json!({ "loserId": "t_2" }))).map(|_| ())),
-        ("tickets", "split", |c| (c.tickets().split("t_1", &json!({ "title": "split" }))).map(|_| ())),
-        ("tickets", "bulk", |c| (c .tickets() .bulk(&json!({ "ids": ["t_1"], "action": "status" }))).map(|_| ())),
+        ("tickets", "list", |c| {
+            (c.tickets().list(&Query::new())).map(|_| ())
+        }),
+        ("tickets", "comments", |c| {
+            (c.tickets().comments("t_1", &Query::new())).map(|_| ())
+        }),
+        ("tickets", "for_conversation", |c| {
+            (c.tickets().for_conversation("v_1")).map(|_| ())
+        }),
+        ("tickets", "queues", |c| {
+            (c.tickets().queues(&Query::new())).map(|_| ())
+        }),
+        ("tickets", "merge", |c| {
+            (c.tickets().merge("t_1", &json!({ "loserId": "t_2" }))).map(|_| ())
+        }),
+        ("tickets", "split", |c| {
+            (c.tickets().split("t_1", &json!({ "title": "split" }))).map(|_| ())
+        }),
+        ("tickets", "bulk", |c| {
+            (c.tickets()
+                .bulk(&json!({ "ids": ["t_1"], "action": "status" })))
+            .map(|_| ())
+        }),
         // -- macros -------------------------------------------------------
-        ("macros", "list", |c| (c.macros().list(&Query::new())).map(|_| ())),
-        ("macros", "create", |c| (c .macros() .create(&json!({ "name": "m", "scope": "workspace" }))).map(|_| ())),
-        ("macros", "update", |c| (c.macros().update("m_1", &json!({ "name": "m2" }))).map(|_| ())),
-        ("macros", "delete", |c| (c.macros().delete("m_1")).map(|_| ())),
+        ("macros", "list", |c| {
+            (c.macros().list(&Query::new())).map(|_| ())
+        }),
+        ("macros", "create", |c| {
+            (c.macros()
+                .create(&json!({ "name": "m", "scope": "workspace" })))
+            .map(|_| ())
+        }),
+        ("macros", "update", |c| {
+            (c.macros().update("m_1", &json!({ "name": "m2" }))).map(|_| ())
+        }),
+        ("macros", "delete", |c| {
+            (c.macros().delete("m_1")).map(|_| ())
+        }),
         // -- kb -----------------------------------------------------------
-        ("kb", "articles", |c| (c.kb().articles(&Query::new())).map(|_| ())),
+        ("kb", "articles", |c| {
+            (c.kb().articles(&Query::new())).map(|_| ())
+        }),
         ("kb", "article", |c| (c.kb().article("how-to")).map(|_| ())),
-        ("kb", "collections", |c| (c.kb().collections(&Query::new())).map(|_| ())),
+        ("kb", "collections", |c| {
+            (c.kb().collections(&Query::new())).map(|_| ())
+        }),
         // -- search -------------------------------------------------------
-        ("search", "query", |c| (c.search().query("refund", &Query::new())).map(|_| ())),
+        ("search", "query", |c| {
+            (c.search().query("refund", &Query::new())).map(|_| ())
+        }),
         // -- events -------------------------------------------------------
-        ("events", "track", |c| (c .events() .track(&json!({ "contactId": "c_1", "name": "evt" }))).map(|_| ())),
-        ("events", "list", |c| (c.events().list(&Query::new())).map(|_| ())),
+        ("events", "track", |c| {
+            (c.events()
+                .track(&json!({ "contactId": "c_1", "name": "evt" })))
+            .map(|_| ())
+        }),
+        ("events", "list", |c| {
+            (c.events().list(&Query::new())).map(|_| ())
+        }),
         // -- webhooks -----------------------------------------------------
-        ("webhooks", "deliveries", |c| (c.webhooks().deliveries(&Query::new())).map(|_| ())),
-        ("webhooks", "delivery", |c| (c.webhooks().delivery("d_1")).map(|_| ())),
-        ("webhooks", "redeliver", |c| (c.webhooks().redeliver("d_1")).map(|_| ())),
+        ("webhooks", "deliveries", |c| {
+            (c.webhooks().deliveries(&Query::new())).map(|_| ())
+        }),
+        ("webhooks", "delivery", |c| {
+            (c.webhooks().delivery("d_1")).map(|_| ())
+        }),
+        ("webhooks", "redeliver", |c| {
+            (c.webhooks().redeliver("d_1")).map(|_| ())
+        }),
         // -- reports ------------------------------------------------------
-        ("reports", "overview", |c| (c.reports().overview(&Query::new())).map(|_| ())),
-        ("reports", "agents", |c| (c.reports().agents(&Query::new())).map(|_| ())),
-        ("reports", "conversations_by_day", |c| (c.reports().conversations_by_day(&Query::new())).map(|_| ())),
-        ("reports", "sla", |c| (c.reports().sla(&Query::new())).map(|_| ())),
+        ("reports", "overview", |c| {
+            (c.reports().overview(&Query::new())).map(|_| ())
+        }),
+        ("reports", "agents", |c| {
+            (c.reports().agents(&Query::new())).map(|_| ())
+        }),
+        ("reports", "conversations_by_day", |c| {
+            (c.reports().conversations_by_day(&Query::new())).map(|_| ())
+        }),
+        ("reports", "sla", |c| {
+            (c.reports().sla(&Query::new())).map(|_| ())
+        }),
         // -- channels -----------------------------------------------------
-        ("channels", "list", |c| (c.channels().list(&Query::new())).map(|_| ())),
-        ("channels", "get", |c| (c.channels().get("ch_1")).map(|_| ())),
+        ("channels", "list", |c| {
+            (c.channels().list(&Query::new())).map(|_| ())
+        }),
+        ("channels", "get", |c| {
+            (c.channels().get("ch_1")).map(|_| ())
+        }),
         // -- billing ------------------------------------------------------
-        ("billing", "plans", |c| (c.billing().plans(&Query::new())).map(|_| ())),
-        ("billing", "usage", |c| (c.billing().usage(&Query::new())).map(|_| ())),
+        ("billing", "plans", |c| {
+            (c.billing().plans(&Query::new())).map(|_| ())
+        }),
+        ("billing", "usage", |c| {
+            (c.billing().usage("ai.tokens", &Query::new())).map(|_| ())
+        }),
         // -- workspace ----------------------------------------------------
-        ("workspace", "settings", |c| (c.workspace().settings()).map(|_| ())),
-        ("workspace", "labels", |c| (c.workspace().labels(&Query::new())).map(|_| ())),
-        ("workspace", "inboxes", |c| (c.workspace().inboxes(&Query::new())).map(|_| ())),
-        ("workspace", "team_members", |c| (c.workspace().team_members("tm_1", &Query::new())).map(|_| ())),
-        ("workspace", "agent_skills", |c| (c.workspace().agent_skills(&Query::new())).map(|_| ())),
+        ("workspace", "settings", |c| {
+            (c.workspace().settings()).map(|_| ())
+        }),
+        ("workspace", "labels", |c| {
+            (c.workspace().labels(&Query::new())).map(|_| ())
+        }),
+        ("workspace", "inboxes", |c| {
+            (c.workspace().inboxes(&Query::new())).map(|_| ())
+        }),
+        ("workspace", "team_members", |c| {
+            (c.workspace().team_members("tm_1", &Query::new())).map(|_| ())
+        }),
+        ("workspace", "agent_skills", |c| {
+            (c.workspace().agent_skills(&Query::new())).map(|_| ())
+        }),
     ]
 }
 
@@ -189,15 +307,12 @@ fn invocations() -> Vec<(&'static str, &'static str, Invocation)> {
 /// suite stayed green. The method's own `Result` is checked below, so a
 /// shape its return type cannot decode now fails here.
 fn observe(ns: &str, name: &str, invoke: Invocation) -> (String, String) {
-    let shape = shape_for(ns, name)
-        .unwrap_or_else(|| panic!("no response shape recorded for {ns}.{name}"));
-    let body = shape.body();
+    let shape =
+        shape_for(ns, name).unwrap_or_else(|| panic!("no response shape recorded for {ns}.{name}"));
     let mock = MockTransport::new();
     // Three queued, so a method that issues more than one request is caught
     // by the count assertion rather than by the mock panicking.
-    mock.push_json(200, body)
-        .push_json(200, body)
-        .push_json(200, body);
+    mock.push_shape(shape).push_shape(shape).push_shape(shape);
     let outcome = invoke(&client(&mock));
     assert!(
         outcome.is_ok(),
@@ -331,32 +446,39 @@ fn the_surface_lock_is_regenerated_and_matches_the_manifest() {
         mismatches.join("\n  ")
     );
 
-    // 2b. The shape table and the manifest must agree about what is paged.
+    // 2b. Every manifest method must have a recorded response shape, and
+    //     anything the manifest marks `paged` must really answer a page.
     //
-    //     Both directions. A manifest entry marked `paged` whose shape here
-    //     is not `Page` means the fake is lying to a `Page`-typed method;
-    //     a `Page` shape here with no `paged` flag means this SDK is
-    //     deserialising an envelope the route does not send. That second
-    //     case is the `macros.list` bug, and this is the assertion that
-    //     would have caught it.
-    let mut shape_disagreements: Vec<String> = Vec::new();
+    //     ONE direction only, deliberately. The converse does not hold:
+    //     `contacts.journey`, `conversations.unattended` and `search.query`
+    //     all answer page envelopes and are not marked `paged`, because the
+    //     flag means "this SDK offers an auto-paginator for it" rather than
+    //     "the wire shape is a page". Asserting the converse would force
+    //     either three iterators nobody asked for or three wrong shapes.
+    //
+    //     What catches the inverse error — a method typed `Page` against a
+    //     route that does not send one — is not this check but `observe`
+    //     below: it answers each route its real shape and asserts the call
+    //     SUCCEEDS. That is what `macros.list` fails if it goes back to
+    //     `get_page`, now that `Page` refuses a bare array.
+    let mut shape_problems: Vec<String> = Vec::new();
     for ((ns, name), entry) in &manifest_keys {
         let Some(shape) = shape_for(ns, name) else {
-            shape_disagreements.push(format!("{ns}.{name}: no response shape recorded"));
+            shape_problems.push(format!(
+                "{ns}.{name}: no response shape recorded in tests/common/mod.rs"
+            ));
             continue;
         };
-        let manifest_paged = entry.paged.unwrap_or(false);
-        let shape_paged = shape == BodyShape::Page;
-        if manifest_paged != shape_paged {
-            shape_disagreements.push(format!(
-                "{ns}.{name}: manifest paged={manifest_paged}, response shape={shape:?}"
+        if entry.paged == Some(true) && shape != BodyShape::Page {
+            shape_problems.push(format!(
+                "{ns}.{name}: manifest says paged, but its response shape is {shape:?}"
             ));
         }
     }
     assert!(
-        shape_disagreements.is_empty(),
-        "the manifest and the response-shape table disagree:\n  {}",
-        shape_disagreements.join("\n  ")
+        shape_problems.is_empty(),
+        "manifest / response-shape problems:\n  {}",
+        shape_problems.join("\n  ")
     );
 
     // 2c. Anti-vacuity floor. If the manifest ever parses to zero paged
@@ -368,7 +490,11 @@ fn the_surface_lock_is_regenerated_and_matches_the_manifest() {
     //     route changed category, the spec did not stop parsing. Raise this
     //     when a genuinely paginated route is added; do not lower it to make
     //     a failing parse go away.
-    let paged_count = manifest.entries.iter().filter(|e| e.paged == Some(true)).count();
+    let paged_count = manifest
+        .entries
+        .iter()
+        .filter(|e| e.paged == Some(true))
+        .count();
     assert!(
         paged_count >= 7,
         "only {paged_count} paged manifest entries; expected at least 7 \

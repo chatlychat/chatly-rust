@@ -47,7 +47,8 @@ impl<'a> Reports<'a> {
         self.client.get("/v1/reports/overview", query)
     }
 
-    /// `GET /v1/reports/agents` — per-agent performance.
+    /// `GET /v1/reports/agents` — per-agent performance, as a **JSON
+    /// array** of one row per agent.
     ///
     /// `days` only: 1–90, default 7.
     ///
@@ -58,7 +59,8 @@ impl<'a> Reports<'a> {
         self.client.get("/v1/reports/agents", query)
     }
 
-    /// `GET /v1/reports/conversations-by-day` — a daily time series.
+    /// `GET /v1/reports/conversations-by-day` — a daily time series, as a
+    /// **JSON array** of `{ day, count }`.
     ///
     /// `days` only: 1–90, default **14** — not 7 like its two siblings.
     ///

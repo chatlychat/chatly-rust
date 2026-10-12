@@ -4,6 +4,7 @@ use serde_json::Value;
 
 use crate::client::ChatlyClient;
 use crate::error::ChatlyError;
+use crate::pagination::PageIter;
 use crate::query::Query;
 
 /// The kinds `/v1/search` can search over, as the API's enum spells them.
@@ -24,8 +25,18 @@ impl<'a> Search<'a> {
         Self { client }
     }
 
-    /// `GET /v1/search` — search contacts, conversations, messages, tickets
-    /// and KB articles.
+    /// `GET /v1/search` — one page of results, as the **whole envelope**.
+    ///
+    /// Searches contacts, conversations, messages, tickets and KB articles.
+    ///
+    /// Returns [`Value`] and not [`crate::Page`], unlike the other
+    /// paginated single-page forms, because the envelope carries `facets`
+    /// (per-entity hit counts) and `tier` (which backend answered —
+    /// `postgres` today) **beside** `items` and `nextCursor`. A `Page`
+    /// would drop both, and the facets are usually the reason a caller hit
+    /// this route rather than a list endpoint. Read `out["items"]`,
+    /// `out["facets"]` and `out["tier"]`; use [`Search::iter`] if you only
+    /// want the hits.
     ///
     /// `q` is required (1–256 chars) and is set onto `query` for you,
     /// replacing any `q` already there. Everything else in `query` is passed
@@ -69,6 +80,16 @@ impl<'a> Search<'a> {
     /// over 256 characters.
     pub fn query(&self, q: &str, query: &Query) -> Result<Value, ChatlyError> {
         self.client.get("/v1/search", &query.clone().set("q", q))
+    }
+
+    /// `GET /v1/search` — every page of hits, as an iterator.
+    ///
+    /// Yields the hits only. `facets` and `tier` are per-page envelope
+    /// fields with nothing to iterate, so they are not reachable here —
+    /// call [`Search::query`] for those.
+    pub fn iter(&self, q: &str, query: &Query) -> PageIter<Value> {
+        self.client
+            .paginate("/v1/search", &query.clone().set("q", q))
     }
 
     /// `GET /v1/search?kinds=kb` — the same route, narrowed to help-centre

@@ -219,6 +219,7 @@ impl<'a> Contacts<'a> {
     /// `DELETE /v1/contacts/{id}/tags/{tag}` — remove one tag.
     ///
     /// `tag` is percent-encoded, so a tag with a space or a `/` in it works.
+    /// Answers the surviving contact rather than a 204.
     ///
     /// # Errors
     ///
@@ -262,17 +263,35 @@ impl<'a> Contacts<'a> {
         )
     }
 
-    /// `GET /v1/contacts/{id}/journey` — this contact's activity timeline.
+    /// `GET /v1/contacts/{id}/journey` — one page of this contact's
+    /// activity timeline.
     ///
     /// Accepts `days` (1–365, default 90), `limit` (1–100, default 25) and
-    /// `cursor` (an ISO-8601 timestamp, not an opaque cursor — so this route
-    /// is not driven by [`PageIter`]).
+    /// `cursor`.
+    ///
+    /// **The cursor is an ISO-8601 instant**, not an opaque token —
+    /// `journeyQuerySchema` declares `cursor: z.string().datetime({ offset:
+    /// true })`. That makes it tempting to synthesise one from a timestamp
+    /// you already have. Do not: it is still a cursor, with the server's
+    /// tie-breaking and inclusivity rules behind it. Walk it, or use
+    /// [`Contacts::iter_journey`].
     ///
     /// # Errors
     ///
     /// Any [`ChatlyError`].
-    pub fn journey(&self, id: &str, query: &Query) -> Result<Value, ChatlyError> {
-        self.client.get(
+    pub fn journey(&self, id: &str, query: &Query) -> Result<Page<Value>, ChatlyError> {
+        self.client.get_page(
+            &format!("/v1/contacts/{}/journey", encode_path_segment(id)),
+            query,
+        )
+    }
+
+    /// `GET /v1/contacts/{id}/journey` — the whole timeline, as an iterator.
+    ///
+    /// Walks the ISO-8601 cursors for you, which is the only way you should
+    /// be producing them.
+    pub fn iter_journey(&self, id: &str, query: &Query) -> PageIter<Value> {
+        self.client.paginate(
             &format!("/v1/contacts/{}/journey", encode_path_segment(id)),
             query,
         )

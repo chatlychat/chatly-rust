@@ -115,7 +115,8 @@ impl<'a> Macros<'a> {
         )
     }
 
-    /// `DELETE /v1/macros/{id}`.
+    /// `DELETE /v1/macros/{id}` — answers `204 No Content`, which this
+    /// crate decodes to `Value::Null`.
     ///
     /// Carries an `Idempotency-Key` like every other write, so an SDK-level
     /// retry of a delete is not a second delete.

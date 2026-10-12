@@ -9,7 +9,7 @@ use std::collections::{HashSet, VecDeque};
 use std::fmt;
 use std::marker::PhantomData;
 
-use serde::de::{Deserialize as _, MapAccess, Visitor};
+use serde::de::{MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::error::ChatlyError;
@@ -285,11 +285,11 @@ mod tests {
     #[test]
     fn refuses_anything_that_is_not_a_page_object() {
         for not_a_page in [
-            "[]",                        // GET /v1/macros, empty
-            r#"[{"id":"m_1"}]"#,         // GET /v1/macros, populated
-            "{}",                        // any single-object route
-            r#"{"nextCursor":null}"#,    // a page missing `items`
-            "null",                      // a 204, decoded
+            "[]",                     // GET /v1/macros, empty
+            r#"[{"id":"m_1"}]"#,      // GET /v1/macros, populated
+            "{}",                     // any single-object route
+            r#"{"nextCursor":null}"#, // a page missing `items`
+            "null",                   // a 204, decoded
             "7",
             r#""text""#,
         ] {

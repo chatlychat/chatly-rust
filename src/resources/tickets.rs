@@ -36,10 +36,11 @@ impl<'a> Tickets<'a> {
         self.client.paginate("/v1/tickets", query)
     }
 
-    /// `GET /v1/tickets/{id}/comments` — the comment thread on a ticket.
+    /// `GET /v1/tickets/{id}/comments` — the comment thread on a ticket, as
+    /// a **JSON array**.
     ///
-    /// Not marked paginated in `surface.json`, so there is no iterator for
-    /// it.
+    /// Pagination-exempt: a ticket discussion is bounded and the service
+    /// caps it at 500 comments, so there is no envelope and no cursor.
     ///
     /// # Errors
     ///
@@ -51,8 +52,11 @@ impl<'a> Tickets<'a> {
         )
     }
 
-    /// `GET /v1/tickets/for-conversation/{conversation_id}` — the ticket, if
-    /// any, auto-created from or attached to a conversation.
+    /// `GET /v1/tickets/for-conversation/{conversation_id}` — the tickets
+    /// attached to a conversation, as a **JSON array**.
+    ///
+    /// An array and not one ticket: a conversation can carry more than one,
+    /// though in practice a handful at most.
     ///
     /// # Errors
     ///
@@ -68,7 +72,7 @@ impl<'a> Tickets<'a> {
     }
 
     /// `GET /v1/tickets/queues` — the ticket queues configured in this
-    /// workspace.
+    /// workspace, as a **JSON array**.
     ///
     /// # Errors
     ///

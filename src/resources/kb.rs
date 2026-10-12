@@ -70,9 +70,10 @@ impl<'a> Kb<'a> {
         )
     }
 
-    /// `GET /v1/kb/collections` — the collections articles are grouped into.
+    /// `GET /v1/kb/collections` — the collections articles are grouped into,
+    /// as a **JSON array**.
     ///
-    /// Not cursor-paginated.
+    /// Pagination-exempt: the per-workspace taxonomy is small.
     ///
     /// # Errors
     ///

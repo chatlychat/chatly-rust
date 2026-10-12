@@ -172,25 +172,40 @@ impl<'a> Conversations<'a> {
         )
     }
 
-    /// `GET /v1/conversations/unattended` — threads waiting on a human.
+    /// `GET /v1/conversations/unattended` — one page of threads waiting on
+    /// a human, as the **whole envelope**.
     ///
     /// Accepts `assignee`, `team`, `channel`, `olderThanMinutes` (capped at
     /// 10,080 — seven days), `cursor` and `limit` (1–100, default 25).
     ///
-    /// Two things worth knowing. This route does **not** reject a parameter
-    /// it cannot use: an unparseable `team` or `olderThanMinutes` is dropped
-    /// and you get a wider result set rather than a 400, so check your
-    /// spelling against that list rather than relying on an error. And
-    /// although `surface.json` does not mark it paginated — which is why
-    /// there is no `iter_unattended` here — it does take a `cursor`, so
-    /// [`ChatlyClient::paginate`] will walk it if your deployment returns a
-    /// `nextCursor`.
+    /// Returns [`Value`] and not [`Page`], unlike the other paginated single
+    /// -page forms, because the envelope carries a **`total` beside
+    /// `items`** and that total is not `items.len()` — it is how many
+    /// threads are waiting in all. A `Page` would silently drop it, which is
+    /// the number most callers of this route actually want. Read
+    /// `out["items"]` and `out["total"]`, or use
+    /// [`Conversations::iter_unattended`] for the threads alone.
+    ///
+    /// One more thing worth knowing: this route does **not** reject a
+    /// parameter it cannot use. An unparseable `team` or `olderThanMinutes`
+    /// is dropped and you get a wider result set rather than a 400, so check
+    /// your spelling against that list rather than relying on an error.
     ///
     /// # Errors
     ///
     /// Any [`ChatlyError`].
     pub fn unattended(&self, query: &Query) -> Result<Value, ChatlyError> {
         self.client.get("/v1/conversations/unattended", query)
+    }
+
+    /// `GET /v1/conversations/unattended` — every waiting thread, as an
+    /// iterator.
+    ///
+    /// Yields the threads only. If you need the envelope's `total`, call
+    /// [`Conversations::unattended`] instead — or as well; one page is one
+    /// request.
+    pub fn iter_unattended(&self, query: &Query) -> PageIter<Value> {
+        self.client.paginate("/v1/conversations/unattended", query)
     }
 
     /// `GET /v1/conversations/{id}/agent-handling` — who or what is
@@ -274,7 +289,10 @@ impl<'a> Conversations<'a> {
     }
 
     /// `GET /v1/conversations/{id}/generated-replies` — replies an AI agent
-    /// has drafted for this thread.
+    /// has drafted for this thread, as a **JSON array**.
+    ///
+    /// Pagination-exempt: the proposals on one conversation are bounded, so
+    /// there is no envelope and no cursor.
     ///
     /// # Errors
     ///
@@ -319,7 +337,7 @@ impl<'a> Conversations<'a> {
     }
 
     /// `GET /v1/conversations/{id}/scheduled-messages` — messages queued to
-    /// send later on this thread.
+    /// send later on this thread, as a **JSON array**.
     ///
     /// # Errors
     ///
@@ -374,6 +392,10 @@ impl<'a> Conversations<'a> {
 
     /// `DELETE /v1/conversations/scheduled-messages/{scheduled_id}` — cancel
     /// a queued message.
+    ///
+    /// Answers the scheduled message as it ended up rather than a bare 204,
+    /// so a send that already went out tells you so instead of implying the
+    /// contact never saw it.
     ///
     /// Note the path: it is keyed on the scheduled-message id alone and does
     /// **not** include the conversation id, which is why this method takes

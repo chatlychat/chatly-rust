@@ -35,6 +35,14 @@ impl MockTransport {
         self.push(HttpResponse::json(status, body))
     }
 
+    /// Queue the response shape a route really answers with.
+    pub fn push_shape(&self, shape: BodyShape) -> &Self {
+        if shape == BodyShape::Empty {
+            return self.push(HttpResponse::new(shape.status(), vec![], Vec::new()));
+        }
+        self.push_json(shape.status(), shape.body())
+    }
+
     /// Queue a response with extra headers.
     pub fn push_with_headers(&self, status: u16, body: &str, headers: &[(&str, &str)]) -> &Self {
         let mut all = vec![("content-type".to_owned(), "application/json".to_owned())];
@@ -150,15 +158,27 @@ pub fn no_retries() -> RetryPolicy {
 /// The top-level JSON shape a route answers with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BodyShape {
-    /// `{ "items": [...], "nextCursor": … }` — a cursor page.
+    /// `{ "items": [...], "nextCursor": … }` — a cursor page. Several routes
+    /// add siblings (`hasMore`, `total`, `tier`/`facets`); those are the same
+    /// shape as far as a client is concerned.
     Page,
-    /// A bare top-level JSON array.
+    /// A bare top-level JSON array. Fourteen routes do this.
     Array,
     /// A single top-level JSON object that is not a page.
     Object,
+    /// `204 No Content`, which this crate decodes to `Value::Null`.
+    Empty,
 }
 
 impl BodyShape {
+    /// The HTTP status to answer with.
+    pub fn status(self) -> u16 {
+        match self {
+            Self::Empty => 204,
+            _ => 200,
+        }
+    }
+
     /// A body of this shape.
     ///
     /// **Non-empty on purpose.** The empty forms are not distinguishable by
@@ -166,49 +186,214 @@ impl BodyShape {
     /// `{"items":[],"nextCursor":null}` were all accepted by a derived
     /// `Page`, so a fake that answered `[]` could not tell a correct
     /// `macros().list` from one that still deserialised into a `Page`. Each
-    /// of these carries a row, so the three shapes are actually distinct.
+    /// of these carries a row, so the shapes are actually distinct.
     pub fn body(self) -> &'static str {
         match self {
             Self::Page => r#"{"items":[{"id":"row_1"}],"nextCursor":null}"#,
             Self::Array => r#"[{"id":"row_1"}]"#,
             Self::Object => r#"{"id":"row_1"}"#,
-        }
-    }
-
-    /// A body of this shape carrying one row, for tests that read a value
-    /// back out.
-    pub fn body_with_row(self, row: &str) -> String {
-        match self {
-            Self::Page => format!(r#"{{"items":[{row}],"nextCursor":null}}"#),
-            Self::Array => format!("[{row}]"),
-            Self::Object => row.to_owned(),
+            Self::Empty => "",
         }
     }
 }
 
-/// What `ns.name` answers with.
+/// What `ns.name` answers with, for all 55 manifest methods.
 ///
-/// Every entry in `packages/sdk-spec/surface.json` must appear here;
-/// `tests/surface_lock.rs` fails if one does not, so a new manifest method
-/// cannot quietly inherit a default shape.
+/// Resolved from each handler's `@ZodResponse(...)` schema, or from the
+/// service's declared return type where the handler has no such decorator.
+/// Returns `None` for anything not listed, and `tests/surface_lock.rs`
+/// treats that as a failure — there is deliberately **no catch-all arm**, so
+/// a method added to the manifest cannot quietly inherit a default shape.
+/// That matters because the default used to be `Page`, for every route.
+///
+/// Three things in here are worth knowing before you trust a shape:
+///
+/// - **Fourteen routes return a bare array**, not an envelope. All of them
+///   are `@PaginationExempt`, so there is no cursor to ask for more.
+/// - **`contacts.journey`, `conversations.unattended` and `search.query`
+///   return page envelopes but are NOT marked `paged` in the manifest.** The
+///   manifest flag says "this SDK offers an auto-paginator", not "the wire
+///   shape is a page", and those three do not get one. So the cross-check in
+///   `surface_lock.rs` runs one way only: `paged` implies `Page`, not the
+///   converse.
+/// - **`macros.delete` is the only 204.**
 pub fn shape_for(ns: &str, name: &str) -> Option<BodyShape> {
+    use BodyShape::{Array, Empty, Object, Page};
     let shape = match (ns, name) {
-        // The 7 genuinely cursor-paginated routes.
-        ("contacts", "list")
-        | ("conversations", "list")
-        | ("conversations", "messages")
-        | ("tickets", "list")
-        | ("kb", "articles")
-        | ("events", "list")
-        | ("webhooks", "deliveries") => BodyShape::Page,
+        ("root", "whoami") => Object,
 
-        // Bare arrays. `macros.list` is the one this table exists for.
-        ("macros", "list") => BodyShape::Array,
+        ("contacts", "list") => Page,
+        ("contacts", "get") => Object,
+        ("contacts", "upsert") => Object,
+        ("contacts", "bulk_upsert") => Object,
+        ("contacts", "merge") => Object,
+        ("contacts", "add_tags") => Object,
+        // Answers the surviving contact, not a 204.
+        ("contacts", "remove_tag") => Object,
+        ("contacts", "unsubscribe") => Object,
+        // A page envelope, though the manifest does not mark it paged.
+        ("contacts", "journey") => Page,
 
-        // Everything else is a single object: one entity, a report, a
-        // settings blob, a write's result, or a 204 (which this crate
-        // decodes to `Value::Null` and which `Object` stands in for here).
-        _ => BodyShape::Object,
+        ("conversations", "list") => Page,
+        ("conversations", "get") => Object,
+        ("conversations", "messages") => Page,
+        ("conversations", "send") => Object,
+        // Page plus a `total` that is not `items.len()`.
+        ("conversations", "unattended") => Page,
+        ("conversations", "agent_handling") => Object,
+        ("conversations", "set_agent_handling") => Object,
+        ("conversations", "generated_replies") => Array,
+        ("conversations", "generate_reply") => Object,
+        ("conversations", "scheduled_messages") => Array,
+        ("conversations", "schedule_message") => Object,
+        // Answers the scheduled message as it ended up, not a 204.
+        ("conversations", "cancel_scheduled") => Object,
+
+        // Page plus `hasMore`.
+        ("tickets", "list") => Page,
+        ("tickets", "comments") => Array,
+        ("tickets", "for_conversation") => Array,
+        ("tickets", "queues") => Array,
+        ("tickets", "merge") => Object,
+        ("tickets", "split") => Object,
+        ("tickets", "bulk") => Object,
+
+        // The bare array this whole table exists for.
+        ("macros", "list") => Array,
+        ("macros", "create") => Object,
+        ("macros", "update") => Object,
+        ("macros", "delete") => Empty,
+
+        ("kb", "articles") => Page,
+        ("kb", "article") => Object,
+        ("kb", "collections") => Array,
+
+        // Page plus `tier` and `facets`; not manifest-paged.
+        ("search", "query") => Page,
+
+        ("events", "track") => Object,
+        ("events", "list") => Page,
+
+        ("webhooks", "deliveries") => Page,
+        ("webhooks", "delivery") => Object,
+        ("webhooks", "redeliver") => Object,
+
+        ("reports", "overview") => Object,
+        ("reports", "agents") => Array,
+        ("reports", "conversations_by_day") => Array,
+        ("reports", "sla") => Object,
+
+        ("channels", "list") => Array,
+        ("channels", "get") => Object,
+
+        ("billing", "plans") => Array,
+        ("billing", "usage") => Object,
+
+        ("workspace", "settings") => Object,
+        ("workspace", "labels") => Array,
+        ("workspace", "inboxes") => Array,
+        ("workspace", "team_members") => Array,
+        // `{ "skills": [...] }`, not a bare array.
+        ("workspace", "agent_skills") => Object,
+
+        _ => return None,
     };
     Some(shape)
+}
+
+// ---------------------------------------------------------------------------
+// The manifest, loaded once, shared by the suites.
+// ---------------------------------------------------------------------------
+
+/// One entry of `packages/sdk-spec/surface.json`.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ManifestEntry {
+    /// Namespace, e.g. `contacts`.
+    pub ns: String,
+    /// Method name, e.g. `list`.
+    pub name: String,
+    /// HTTP verb, uppercase.
+    pub http: String,
+    /// Path with `{...}` parameters.
+    pub path: String,
+    /// `true` on the routes that answer `{ items, nextCursor }` and for
+    /// which every SDK offers an auto-paginating form. Ten of them.
+    #[serde(default)]
+    pub paged: Option<bool>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ManifestFile {
+    #[serde(rename = "baseUrl")]
+    base_url: String,
+    entries: Vec<ManifestEntry>,
+}
+
+/// Where the manifest lives, relative to this package.
+pub fn manifest_path() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../sdk-spec/surface.json")
+}
+
+fn manifest_file() -> &'static ManifestFile {
+    static LOADED: std::sync::OnceLock<ManifestFile> = std::sync::OnceLock::new();
+    LOADED.get_or_init(|| {
+        let path = manifest_path();
+        let raw = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!(
+                "cannot read the surface manifest at {}: {err}. This is the \
+                 SDK's parity evidence and must not be skipped.",
+                path.display()
+            )
+        });
+        serde_json::from_str(&raw).expect("surface.json is valid JSON")
+    })
+}
+
+/// Every manifest entry, in file order.
+pub fn manifest() -> &'static [ManifestEntry] {
+    &manifest_file().entries
+}
+
+/// The manifest's declared base URL.
+pub fn manifest_base_url() -> &'static str {
+    &manifest_file().base_url
+}
+
+/// Find the manifest entry a concrete request corresponds to.
+///
+/// Matches on the verb and on every **non-parameter** path segment, with the
+/// parameter positions taken from the manifest itself. So
+/// `GET /v1/contacts/c_1/tags/vip` resolves to `contacts.remove_tag`'s
+/// `/v1/contacts/{id}/tags/{tag}` without the caller naming either.
+///
+/// This exists so a test can assert a verb and a path and get the route's
+/// response shape for free, instead of restating it. Restating it is how a
+/// hand-written shape drifts: a sweep of this suite once left `/v1/macros`
+/// claiming `Page` while the shape table said `Array`, and only a one-off
+/// script caught it. Now there is nothing to drift.
+pub fn entry_for_request(method: &str, path: &str) -> Option<&'static ManifestEntry> {
+    let path = path.split('?').next().unwrap_or(path);
+    let actual: Vec<&str> = path.split('/').collect();
+    manifest().iter().find(|entry| {
+        if !entry.http.eq_ignore_ascii_case(method) {
+            return false;
+        }
+        let expected: Vec<&str> = entry.path.split('/').collect();
+        expected.len() == actual.len()
+            && expected.iter().zip(actual.iter()).all(|(want, got)| {
+                (want.starts_with('{') && want.ends_with('}')) || want == got
+            })
+    })
+}
+
+/// The response shape of the route a concrete request addresses.
+///
+/// Panics if the path is not a manifest path, or if the manifest entry has
+/// no recorded shape — both are failures worth stopping for.
+pub fn shape_for_request(method: &str, path: &str) -> BodyShape {
+    let entry = entry_for_request(method, path).unwrap_or_else(|| {
+        panic!("{method} {path} does not correspond to any surface.json entry")
+    });
+    shape_for(&entry.ns, &entry.name)
+        .unwrap_or_else(|| panic!("no response shape recorded for {}.{}", entry.ns, entry.name))
 }

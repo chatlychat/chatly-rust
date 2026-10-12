@@ -36,7 +36,7 @@ impl<'a> Workspace<'a> {
         self.client.get("/v1/workspace/settings", &Query::new())
     }
 
-    /// `GET /v1/labels` — the workspace's labels.
+    /// `GET /v1/labels` — the workspace's labels, as a **JSON array**.
     ///
     /// # Errors
     ///
@@ -45,7 +45,7 @@ impl<'a> Workspace<'a> {
         self.client.get("/v1/labels", query)
     }
 
-    /// `GET /v1/inboxes`.
+    /// `GET /v1/inboxes` — as a **JSON array**.
     ///
     /// # Errors
     ///
@@ -54,7 +54,8 @@ impl<'a> Workspace<'a> {
         self.client.get("/v1/inboxes", query)
     }
 
-    /// `GET /v1/teams/{id}/members` — the roster of one team.
+    /// `GET /v1/teams/{id}/members` — the roster of one team, as a **JSON
+    /// array**.
     ///
     /// Deliberately not cursor-paginated by the API: a team roster is a
     /// subset of the workspace's seats and is read as one list, so there is
@@ -73,7 +74,8 @@ impl<'a> Workspace<'a> {
         )
     }
 
-    /// `GET /v1/agents/skills` — the workspace's skill taxonomy.
+    /// `GET /v1/agents/skills` — the workspace's skill taxonomy, as
+    /// `{ "skills": [...] }` — an object, not a bare array.
     ///
     /// The distinct set of skill labels currently assigned to any agent, not
     /// a separately managed vocabulary: a skill exists because somebody

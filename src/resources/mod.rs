@@ -31,7 +31,7 @@ mod tickets;
 mod webhooks;
 mod workspace;
 
-pub use billing::Billing;
+pub use billing::{Billing, USAGE_EVENT_TYPES};
 pub use channels::Channels;
 pub use contacts::{BulkContactsInput, ContactInput, Contacts};
 pub use conversations::{Conversations, MessageInput, MessageKind, AGENT_HANDLING_SETTABLE_STATES};

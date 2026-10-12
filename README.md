@@ -87,6 +87,27 @@ for row in chatly.paginate::<Contact>("/v1/contacts", &chatly::Query::new()) {
 client needs no runtime. From async code, wrap a call in
 `tokio::task::spawn_blocking`.
 
+### Which shape comes back
+
+Since everything is a `Value`, you need to know whether to index it or
+iterate it. There are three answers, and they are not guessable from the
+method name:
+
+| Shape                                                        | Routes                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{ items, nextCursor }` — a `Page`, with `.iter()` available | the 7 paginated routes: `contacts.list`, `conversations.list`, `conversations.messages`, `tickets.list`, `kb.articles`, `events.list`, `webhooks.deliveries`                                                                                                                                                                    |
+| a bare JSON **array**                                        | `macros.list`, `channels.list`, `billing.plans`, `kb.collections`, `tickets.comments`, `tickets.for_conversation`, `tickets.queues`, `conversations.generated_replies`, `conversations.scheduled_messages`, `reports.agents`, `reports.conversations_by_day`, `workspace.labels`, `workspace.inboxes`, `workspace.team_members` |
+| a single object                                              | everything else, including every write                                                                                                                                                                                                                                                                                          |
+
+Three routes answer a page envelope but have no `.iter()` here, because the
+shared manifest does not list them as paginated: `contacts.journey`,
+`conversations.unattended` (which adds a `total` that is **not**
+`items.len()`) and `search.query` (which adds `tier` and `facets`). Walk
+them with `paginate()` if you want to.
+
+Some paged routes add a `hasMore` sibling. `Page` ignores it, and ignores any
+other extra key, so you can read `next_cursor` and not think about it.
+
 **Only key-accessible routes have methods.** Of the API's ~880 routes, about
 140 accept a `ck_` key; the rest need a signed-in person and answer a key
 with `403`. So there is no `reactions` method (a reaction records _who_
@@ -440,12 +461,12 @@ the API's naming, not a typo. `merge_loser(id, loser_id)` builds it.
 
 ### `macros()`
 
-| Method              | HTTP   | Path              |
-| ------------------- | ------ | ----------------- |
-| `list(q)` → **array** | GET  | `/v1/macros`      |
-| `create(body)`      | POST   | `/v1/macros`      |
-| `update(id, body)`  | PATCH  | `/v1/macros/{id}` |
-| `delete(id)`        | DELETE | `/v1/macros/{id}` |
+| Method                | HTTP   | Path              |
+| --------------------- | ------ | ----------------- |
+| `list(q)` → **array** | GET    | `/v1/macros`      |
+| `create(body)`        | POST   | `/v1/macros`      |
+| `update(id, body)`    | PATCH  | `/v1/macros/{id}` |
+| `delete(id)`          | DELETE | `/v1/macros/{id}` |
 
 `list` is the one list route in this SDK that is **not** cursor-paginated.
 The handler is pagination-exempt: it answers a bare JSON array, capped at
@@ -521,7 +542,7 @@ group_by)` builds that query.
 | `channels().list(q)`                   | GET  | `/v1/channels`           |
 | `channels().get(id)`                   | GET  | `/v1/channels/{id}`      |
 | `billing().plans(q)`                   | GET  | `/v1/billing/plans`      |
-| `billing().usage(q)`                   | GET  | `/v1/billing/usage`      |
+| `billing().usage(event_type, q)`       | GET  | `/v1/billing/usage`      |
 | `workspace().settings()`               | GET  | `/v1/workspace/settings` |
 | `workspace().labels(q)`                | GET  | `/v1/labels`             |
 | `workspace().inboxes(q)`               | GET  | `/v1/inboxes`            |
@@ -529,6 +550,19 @@ group_by)` builds that query.
 | `workspace().agent_skills(q)`          | GET  | `/v1/agents/skills`      |
 
 All read-only: every write on these surfaces needs a signed-in person.
+
+`billing().usage` takes the **event type as an argument, not a query
+parameter**, because the handler validates it against a closed list and
+throws first — a call without it is a `400`, never an all-types rollup.
+`USAGE_EVENT_TYPES` lists what the server accepts today
+(`conversation.opened`, `message.sent.agent`, `message.sent.bot`,
+`ai.tokens`); `usage_range(event_type, from, to)` sets the window, which
+otherwise defaults to the current UTC month.
+
+`channels().list`, `workspace().labels`, `workspace().inboxes` and
+`workspace().team_members` all return **bare JSON arrays**. So does
+`billing().plans` — and an empty one is a success there, not an error: it is
+what a deployment with no Stripe configuration returns.
 
 ### Helpers, and extras beyond the manifest
 
@@ -538,7 +572,7 @@ All read-only: every write on these surfaces needs a signed-in person.
 | `verify_webhook_signature(body, header, secret)`                                                                                             | 300 s window                                          |
 | `verify_webhook_signature_with(…, &VerifyOptions)`                                                                                           | custom window or clock                                |
 | `search().kb(q, params)`                                                                                                                     | `/v1/search` narrowed to `kinds=kb`                   |
-| `.iter(q)` on each of the 7 paginated routes                                                                                                      | auto-paginating `Iterator`                            |
+| `.iter(q)` on each of the 7 paginated routes                                                                                                 | auto-paginating `Iterator`                            |
 | `iter_messages`, `iter_articles`, `iter_deliveries`                                                                                          | the same, for sub-resources                           |
 | `request`, `request_as`, `paginate`                                                                                                          | the escape hatch                                      |
 | `with_idempotency_key`                                                                                                                       | pin a key across calls                                |

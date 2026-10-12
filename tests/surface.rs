@@ -1,6 +1,11 @@
 //! Every one of the 55 methods in `packages/sdk-spec/surface.json`, called
 //! once against a mock, asserting the HTTP verb and the path it produced.
 //!
+//! Request *bodies*, query encoding and the escape hatch are in
+//! `tests/bodies.rs` — split off to stay under the contract's 650-line
+//! ceiling (§9), and a fair seam: this file is about where a call goes, that
+//! one about what it carries.
+//!
 //! This is the behavioural half of what
 //! `scripts/check-sdk-surface-parity.mjs` checks by name. The gate can see
 //! that a method called `cancel_scheduled` exists; only a test can see that
@@ -36,12 +41,20 @@ fn expect<T>(
     mock
 }
 
-/// The 7 genuinely cursor-paginated routes, whose bodies must be a page.
+// Response shapes, per route. `tests/common/mod.rs` holds the authoritative
+// table for all 55 and `tests/surface_lock.rs` enforces it; these aliases
+// just keep the call sites below readable. This file's assertions are about
+// the verb and the path, so the shape does not change their outcome — but a
+// wrong one here would still be a false claim about the API, and that is how
+// `macros.list` got mis-typed in the first place.
+/// A cursor page. Includes three routes the manifest does not mark `paged`.
 const PAGE: BodyShape = BodyShape::Page;
-/// A bare JSON array — `GET /v1/macros` and nothing else here.
+/// A bare JSON array. Fourteen routes do this.
 const ARRAY: BodyShape = BodyShape::Array;
-/// Everything else: one entity, a report, a settings blob, a write result.
+/// One entity, a report, a settings blob, or a write's result.
 const OBJ: BodyShape = BodyShape::Object;
+/// `204 No Content` — only `DELETE /v1/macros/{id}`.
+const EMPTY: BodyShape = BodyShape::Empty;
 
 #[test]
 fn root_whoami() {
@@ -94,7 +107,7 @@ fn contacts_surface() {
         "/v1/contacts/c_1/unsubscribe",
     );
     expect(
-        OBJ,
+        PAGE,
         |c| c.contacts().journey("c_1", &Query::new()),
         "GET",
         "/v1/contacts/c_1/journey",
@@ -128,7 +141,7 @@ fn conversations_surface() {
         "/v1/conversations/v_1/messages",
     );
     expect(
-        OBJ,
+        PAGE,
         |c| c.conversations().unattended(&Query::new()),
         "GET",
         "/v1/conversations/unattended",
@@ -149,7 +162,7 @@ fn conversations_surface() {
         "/v1/conversations/v_1/agent-handling",
     );
     expect(
-        OBJ,
+        ARRAY,
         |c| c.conversations().generated_replies("v_1", &Query::new()),
         "GET",
         "/v1/conversations/v_1/generated-replies",
@@ -164,7 +177,7 @@ fn conversations_surface() {
         "/v1/conversations/v_1/generated-replies",
     );
     expect(
-        OBJ,
+        ARRAY,
         |c| c.conversations().scheduled_messages("v_1", &Query::new()),
         "GET",
         "/v1/conversations/v_1/scheduled-messages",
@@ -196,19 +209,19 @@ fn tickets_surface() {
         "/v1/tickets",
     );
     expect(
-        OBJ,
+        ARRAY,
         |c| c.tickets().comments("t_1", &Query::new()),
         "GET",
         "/v1/tickets/t_1/comments",
     );
     expect(
-        OBJ,
+        ARRAY,
         |c| c.tickets().for_conversation("v_1"),
         "GET",
         "/v1/tickets/for-conversation/v_1",
     );
     expect(
-        OBJ,
+        ARRAY,
         |c| c.tickets().queues(&Query::new()),
         "GET",
         "/v1/tickets/queues",
@@ -239,7 +252,7 @@ fn tickets_surface() {
 #[test]
 fn macros_surface() {
     expect(
-        PAGE,
+        ARRAY,
         |c| c.macros().list(&Query::new()),
         "GET",
         "/v1/macros",
@@ -252,7 +265,7 @@ fn macros_surface() {
         "/v1/macros/m_1",
     );
     expect(
-        OBJ,
+        EMPTY,
         |c| c.macros().delete("m_1"),
         "DELETE",
         "/v1/macros/m_1",
@@ -293,7 +306,7 @@ fn kb_surface() {
         "/v1/kb/articles/how-to",
     );
     expect(
-        OBJ,
+        ARRAY,
         |c| c.kb().collections(&Query::new()),
         "GET",
         "/v1/kb/collections",
@@ -303,7 +316,7 @@ fn kb_surface() {
 #[test]
 fn search_surface() {
     expect(
-        OBJ,
+        PAGE,
         |c| c.search().query("refund", &Query::new()),
         "GET",
         "/v1/search?q=refund",
@@ -393,13 +406,13 @@ fn reports_surface() {
         "/v1/reports/overview",
     );
     expect(
-        OBJ,
+        ARRAY,
         |c| c.reports().agents(&Query::new()),
         "GET",
         "/v1/reports/agents",
     );
     expect(
-        OBJ,
+        ARRAY,
         |c| c.reports().conversations_by_day(&Query::new()),
         "GET",
         "/v1/reports/conversations-by-day",
@@ -415,7 +428,7 @@ fn reports_surface() {
 #[test]
 fn channels_surface() {
     expect(
-        OBJ,
+        ARRAY,
         |c| c.channels().list(&Query::new()),
         "GET",
         "/v1/channels",
@@ -431,16 +444,16 @@ fn channels_surface() {
 #[test]
 fn billing_surface() {
     expect(
-        OBJ,
+        ARRAY,
         |c| c.billing().plans(&Query::new()),
         "GET",
         "/v1/billing/plans",
     );
     expect(
         OBJ,
-        |c| c.billing().usage(&Query::new()),
+        |c| c.billing().usage("ai.tokens", &Query::new()),
         "GET",
-        "/v1/billing/usage",
+        "/v1/billing/usage?eventType=ai.tokens",
     );
 }
 
@@ -453,19 +466,19 @@ fn workspace_surface() {
         "/v1/workspace/settings",
     );
     expect(
-        OBJ,
+        ARRAY,
         |c| c.workspace().labels(&Query::new()),
         "GET",
         "/v1/labels",
     );
     expect(
-        OBJ,
+        ARRAY,
         |c| c.workspace().inboxes(&Query::new()),
         "GET",
         "/v1/inboxes",
     );
     expect(
-        OBJ,
+        ARRAY,
         |c| c.workspace().team_members("tm_1", &Query::new()),
         "GET",
         "/v1/teams/tm_1/members",
@@ -476,220 +489,4 @@ fn workspace_surface() {
         "GET",
         "/v1/agents/skills",
     );
-}
-
-// ---------------------------------------------------------------------------
-// Bodies the convenience methods build, asserted against the API's verified
-// zod field names. A field name wrong here is a write that validates and
-// does nothing.
-// ---------------------------------------------------------------------------
-
-fn sent_body(call: impl FnOnce(&ChatlyClient)) -> serde_json::Value {
-    let mock = MockTransport::new();
-    mock.push_json(200, OBJ.body());
-    call(&client(&mock));
-    let text = mock.only_request().body_text().expect("a body was sent");
-    serde_json::from_str(&text).expect("the body is JSON")
-}
-
-#[test]
-fn contact_merge_sends_merged_id_and_ticket_merge_sends_loser_id() {
-    // Two routes that do the same thing and spell the argument differently.
-    assert_eq!(
-        sent_body(|c| {
-            let _ = c.contacts().merge("c_1", "c_2");
-        }),
-        json!({ "mergedId": "c_2" })
-    );
-    assert_eq!(
-        sent_body(|c| {
-            let _ = c.tickets().merge_loser("t_1", "t_2");
-        }),
-        json!({ "loserId": "t_2" })
-    );
-}
-
-#[test]
-fn add_tag_sends_a_single_tag_key() {
-    assert_eq!(
-        sent_body(|c| {
-            let _ = c.contacts().add_tag("c_1", "vip");
-        }),
-        json!({ "tag": "vip" })
-    );
-}
-
-#[test]
-fn unsubscribe_sends_a_boolean_and_omits_an_absent_reason() {
-    assert_eq!(
-        sent_body(|c| {
-            let _ = c.contacts().unsubscribe("c_1", true, None);
-        }),
-        json!({ "unsubscribed": true })
-    );
-    assert_eq!(
-        sent_body(|c| {
-            let _ = c
-                .contacts()
-                .unsubscribe("c_1", false, Some("asked to return"));
-        }),
-        json!({ "unsubscribed": false, "reason": "asked to return" })
-    );
-}
-
-#[test]
-fn schedule_sends_body_and_send_at() {
-    assert_eq!(
-        sent_body(|c| {
-            let _ = c
-                .conversations()
-                .schedule("v_1", "later", "2026-10-13T09:00:00Z");
-        }),
-        json!({ "body": "later", "sendAt": "2026-10-13T09:00:00Z" })
-    );
-}
-
-#[test]
-fn set_agent_handling_state_sends_state_and_refuses_an_unsettable_one() {
-    assert_eq!(
-        sent_body(|c| {
-            let _ = c
-                .conversations()
-                .set_agent_handling_state("v_1", "handed_off", Some("why"));
-        }),
-        json!({ "state": "handed_off", "reason": "why" })
-    );
-
-    // `taken_over` is set by a database trigger, never by a caller.
-    let mock = MockTransport::new();
-    let err = client(&mock)
-        .conversations()
-        .set_agent_handling_state("v_1", "taken_over", None)
-        .unwrap_err();
-    assert!(matches!(err, chatly::ChatlyError::Config(_)), "{err:?}");
-    assert_eq!(
-        mock.request_count(),
-        0,
-        "refused before the request, not after a 500"
-    );
-}
-
-#[test]
-fn add_tags_issues_one_request_per_tag_and_refuses_an_empty_list() {
-    let mock = MockTransport::new();
-    mock.push_json(200, OBJ.body())
-        .push_json(200, OBJ.body())
-        .push_json(200, OBJ.body());
-    client(&mock)
-        .contacts()
-        .add_tags("c_1", &["a", "b", "c"])
-        .unwrap();
-    assert_eq!(mock.request_count(), 3, "the route takes one tag per call");
-    let bodies: Vec<String> = mock
-        .requests()
-        .iter()
-        .filter_map(chatly::HttpRequest::body_text)
-        .collect();
-    assert_eq!(
-        bodies,
-        vec![r#"{"tag":"a"}"#, r#"{"tag":"b"}"#, r#"{"tag":"c"}"#]
-    );
-
-    let empty = MockTransport::new();
-    assert!(client(&empty).contacts().add_tags("c_1", &[]).is_err());
-    assert_eq!(empty.request_count(), 0);
-}
-
-// ---------------------------------------------------------------------------
-// Query encoding and the escape hatch.
-// ---------------------------------------------------------------------------
-
-#[test]
-fn repeated_query_keys_stay_repeated_on_the_wire() {
-    let mock = MockTransport::new();
-    mock.push_json(200, PAGE.body());
-    client(&mock)
-        .contacts()
-        .list(
-            &Query::new()
-                .filter("status:eq:active")
-                .filter("plan:eq:pro")
-                .limit(10),
-        )
-        .unwrap();
-    assert_eq!(
-        mock.only_request().url,
-        format!(
-            "{BASE}/v1/contacts?filter%5B%5D=status%3Aeq%3Aactive\
-             &filter%5B%5D=plan%3Aeq%3Apro&limit=10"
-        )
-    );
-}
-
-#[test]
-fn path_parameters_are_percent_encoded() {
-    let mock = MockTransport::new();
-    mock.push_json(200, OBJ.body());
-    client(&mock)
-        .contacts()
-        .remove_tag("c_1", "vip customer/eu")
-        .unwrap();
-    assert_eq!(
-        mock.only_request().url,
-        format!("{BASE}/v1/contacts/c_1/tags/vip%20customer%2Feu")
-    );
-}
-
-#[test]
-fn the_escape_hatch_uses_the_same_auth_and_idempotency_machinery() {
-    let mock = MockTransport::new();
-    mock.push_json(200, r#"{"ok":true}"#);
-    let out = client(&mock)
-        .request(
-            "post",
-            "v1/some/unmapped/route",
-            &Query::new().push("a", "1"),
-            Some(&json!({ "hello": "world" })),
-        )
-        .unwrap();
-    assert_eq!(out["ok"], true);
-
-    let request = mock.only_request();
-    assert_eq!(request.method, "POST", "the verb is upcased");
-    assert_eq!(request.url, format!("{BASE}/v1/some/unmapped/route?a=1"));
-    assert_eq!(request.header("authorization"), Some("Bearer ck_test_key"));
-    assert!(
-        request.header("idempotency-key").is_some(),
-        "an escape-hatch write is still a write"
-    );
-    assert_eq!(request.body_text().unwrap(), r#"{"hello":"world"}"#);
-}
-
-#[test]
-fn the_escape_hatch_can_also_read_and_paginate() {
-    let mock = MockTransport::new();
-    mock.push_json(200, r#"{"items":[{"n":1}],"nextCursor":"c2"}"#)
-        .push_json(200, r#"{"items":[{"n":2}],"nextCursor":null}"#);
-    let rows: Vec<serde_json::Value> = client(&mock)
-        .paginate::<serde_json::Value>("/v1/anything", &Query::new())
-        .map(Result::unwrap)
-        .collect();
-    assert_eq!(rows.len(), 2);
-    assert_eq!(rows[1]["n"], 2);
-
-    let mock = MockTransport::new();
-    mock.push_json(200, r#"{"items":[],"nextCursor":null}"#);
-    let page: chatly::Page<serde_json::Value> = client(&mock)
-        .request_as("GET", "/v1/anything", &Query::new(), None)
-        .unwrap();
-    assert!(page.is_last());
-    assert_eq!(mock.only_request().header("idempotency-key"), None);
-}
-
-#[test]
-fn a_204_decodes_to_null_rather_than_failing() {
-    let mock = MockTransport::new();
-    mock.push(chatly::HttpResponse::new(204, vec![], Vec::new()));
-    let out = client(&mock).macros().delete("m_1").unwrap();
-    assert!(out.is_null());
 }

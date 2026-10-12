@@ -22,10 +22,11 @@ impl<'a> Channels<'a> {
         Self { client }
     }
 
-    /// `GET /v1/channels` — every channel in the workspace.
+    /// `GET /v1/channels` — every channel in the workspace, as a **JSON
+    /// array**.
     ///
-    /// Not cursor-paginated: `surface.json` does not mark it `paged`, so it
-    /// returns the whole collection and there is no iterator for it.
+    /// Pagination-exempt: a settings list, returned whole. No envelope, no
+    /// cursor, no iterator.
     ///
     /// # Errors
     ///
