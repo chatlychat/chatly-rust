@@ -1,0 +1,9 @@
+# Build output. The repo-root .gitignore has no Rust entries, so without
+# this a `git add packages/sdk-rust` stages several hundred megabytes of
+# compiled rustls/ring artifacts.
+/target
+
+# Cargo.lock IS committed. Cargo's default advice is that a library omits it,
+# but this crate's whole dependency argument is "three crates, and here is
+# the tree you inherit" — pinning it means a reviewer can see that tree, and
+# a cold build resolves to what the test output in the changelog describes.

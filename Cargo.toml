@@ -1,0 +1,38 @@
+[package]
+name = "chatly"
+version = "0.1.0"
+edition = "2021"
+# Floor imposed by `ureq` 3.4, which declares `rust-version = "1.85"`.
+# Nothing in this crate's own source needs anything newer than 1.63.
+rust-version = "1.85"
+description = "Official Rust SDK for the Chatly live chat and customer messaging API."
+homepage = "https://chatlychat.com"
+documentation = "https://chatlychat.com/docs"
+repository = "https://github.com/chatlychat/chatly"
+license-file = "LICENSE"
+readme = "README.md"
+keywords = ["chatly", "livechat", "support", "messaging", "sdk"]
+categories = ["api-bindings", "web-programming::http-client"]
+# `tests/` is deliberately NOT packaged. `tests/surface_lock.rs` reads
+# `../sdk-spec/surface.json`, which exists only inside the Chatly monorepo,
+# so shipping the suite would hand consumers a test that cannot pass. The
+# generated lock itself IS packaged, as the parity evidence for this version.
+include = ["src/**/*.rs", "Cargo.toml", "README.md", "CHANGELOG.md", "LICENSE", "surface.lock.json"]
+
+[dependencies]
+# Blocking HTTP + TLS. The contract (packages/sdk-spec/CONTRACT.md s9) names
+# `ureq` or `reqwest` as the one permitted runtime dependency for Rust; `ureq`
+# is the smaller of the two and needs no async runtime.
+ureq = "3.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Deliberately NOT dependencies: `sha2`/`hmac` (SHA-256 and HMAC are ~200
+# lines of std in `src/crypto.rs`, pinned by the contract's own test vectors),
+# `uuid` (idempotency keys are minted in `src/crypto.rs`), `url` and
+# `percent-encoding` (query and path encoding live in `src/query.rs`), and
+# `rand` (jitter and key entropy come from `/dev/urandom` with a std fallback).
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
