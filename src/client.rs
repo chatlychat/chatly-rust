@@ -21,7 +21,8 @@ use crate::transport::{HttpRequest, HttpResponse, Transport, UreqTransport};
 /// shipped with `api.livechat.local` or `api.chatly.example` as the default,
 /// both of which resolve nowhere, so every call failed for anyone who
 /// followed the docs and did not override it. No test caught it because
-/// every test passed an explicit URL. A self-hosted install overrides this;
+/// every test passed an explicit URL. A caller that needs another environment
+/// overrides it;
 /// it is the only caller that ever should.
 pub const DEFAULT_BASE_URL: &str = "https://api.chatlychat.com";
 
@@ -61,7 +62,7 @@ impl std::fmt::Debug for ChatlyClientBuilder {
 impl ChatlyClientBuilder {
     /// Override the API host. Defaults to [`DEFAULT_BASE_URL`].
     ///
-    /// Only a self-hosted install should need this. A trailing slash is
+    /// Only another environment or a test server needs this. A trailing slash is
     /// trimmed for you.
     pub fn base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into();
