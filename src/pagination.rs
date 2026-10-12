@@ -6,8 +6,11 @@
 //! why nothing here exposes an offset.
 
 use std::collections::{HashSet, VecDeque};
+use std::fmt;
+use std::marker::PhantomData;
 
-use serde::{Deserialize, Serialize};
+use serde::de::{Deserialize as _, MapAccess, Visitor};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::error::ChatlyError;
 
@@ -15,20 +18,63 @@ use crate::error::ChatlyError;
 ///
 /// `next_cursor` is `null` on the last page. Pass it back as `cursor` to get
 /// the next one — or use [`PageIter`] and let the SDK do it.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-// `#[serde(default)]` on `items` makes serde's derive infer a `T: Default`
-// bound it does not actually need (rust-lang/rust#26925, "imperfect
-// derives"). Spelled out here so `Page<T>` deserialises for any
-// `Deserialize` T, not only one that is also `Default`.
-#[serde(bound(deserialize = "T: Deserialize<'de>"))]
 pub struct Page<T> {
     /// The rows on this page.
-    #[serde(default)]
     pub items: Vec<T>,
     /// The cursor for the next page, or `None` if this was the last.
-    #[serde(default)]
     pub next_cursor: Option<String>,
+}
+
+/// Deserialisation is hand-written, and strictly, for one reason: a derived
+/// `Deserialize` accepts things that are not pages.
+///
+/// Serde can build a struct from a **sequence** as well as from a map, so a
+/// derived `Page<T>` happily read a bare JSON array — `[]` became
+/// `Page { items: [], next_cursor: None }`. And with `#[serde(default)]` on
+/// both fields, `{}` did too. That is not a theoretical nicety: the shared
+/// manifest briefly marked `GET /v1/macros` as paginated, this crate's
+/// `macros().list` deserialised the route's bare array into `Page`, real
+/// callers got a decode error, and the test that should have caught it
+/// passed — because the empty array the fake transport returned was one of
+/// the shapes a derived `Page` wrongly accepts.
+///
+/// So: a page must be a map, and it must carry `items`. `nextCursor` may be
+/// absent and is then `None`. Unknown keys are ignored, because several list
+/// routes add siblings like `total`.
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for Page<T> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct PageVisitor<T>(PhantomData<fn() -> T>);
+
+        impl<'de, T: Deserialize<'de>> Visitor<'de> for PageVisitor<T> {
+            type Value = Page<T>;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a cursor page object with an `items` array")
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Page<T>, A::Error> {
+                let mut items: Option<Vec<T>> = None;
+                let mut next_cursor: Option<String> = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "items" => items = Some(map.next_value()?),
+                        "nextCursor" => next_cursor = map.next_value()?,
+                        _ => {
+                            map.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                let items = items.ok_or_else(|| serde::de::Error::missing_field("items"))?;
+                Ok(Page { items, next_cursor })
+            }
+        }
+
+        // `deserialize_map` and not `deserialize_any`: the latter would let a
+        // JSON array through to `visit_seq`.
+        deserializer.deserialize_map(PageVisitor(PhantomData))
+    }
 }
 
 impl<T> Page<T> {
@@ -231,6 +277,44 @@ mod tests {
             Ok(queue.pop_front().unwrap_or_default())
         });
         (iter, seen)
+    }
+
+    /// The three shapes a derived `Deserialize` wrongly accepted. Each of
+    /// them is a real response from some route in this API, so each of them
+    /// reaching a `Page`-typed method is a bug a test must be able to see.
+    #[test]
+    fn refuses_anything_that_is_not_a_page_object() {
+        for not_a_page in [
+            "[]",                        // GET /v1/macros, empty
+            r#"[{"id":"m_1"}]"#,         // GET /v1/macros, populated
+            "{}",                        // any single-object route
+            r#"{"nextCursor":null}"#,    // a page missing `items`
+            "null",                      // a 204, decoded
+            "7",
+            r#""text""#,
+        ] {
+            let decoded = serde_json::from_str::<Page<serde_json::Value>>(not_a_page);
+            assert!(decoded.is_err(), "{not_a_page} must not decode as a Page");
+        }
+    }
+
+    /// Siblings beyond `items`/`nextCursor` are ignored, not refused:
+    /// `GET /v1/conversations/unattended` adds `total`.
+    #[test]
+    fn tolerates_extra_sibling_keys() {
+        let decoded: Page<serde_json::Value> =
+            serde_json::from_str(r#"{"items":[],"nextCursor":null,"total":9}"#).unwrap();
+        assert!(decoded.is_empty());
+        assert!(decoded.is_last());
+    }
+
+    /// An absent `nextCursor` means the last page, same as an explicit null.
+    #[test]
+    fn an_absent_next_cursor_is_the_last_page() {
+        let decoded: Page<serde_json::Value> =
+            serde_json::from_str(r#"{"items":[{"id":"a"}]}"#).unwrap();
+        assert!(decoded.is_last());
+        assert_eq!(decoded.len(), 1);
     }
 
     #[test]

@@ -37,7 +37,7 @@ pub use contacts::{BulkContactsInput, ContactInput, Contacts};
 pub use conversations::{Conversations, MessageInput, MessageKind, AGENT_HANDLING_SETTABLE_STATES};
 pub use events::{EventInput, Events};
 pub use kb::Kb;
-pub use macros::{Macros, MACRO_ACTION_KEYS, MACRO_SCOPES};
+pub use macros::{Macros, MACRO_ACTION_KEYS, MACRO_LIBRARY_CAP, MACRO_SCOPES};
 pub use reports::Reports;
 pub use search::{Search, SEARCH_KINDS};
 pub use tickets::{Tickets, TICKET_BULK_ACTIONS};

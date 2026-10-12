@@ -117,8 +117,8 @@ pub use webhooks::{
 pub use resources::{
     Billing, BulkContactsInput, Channels, ContactInput, Contacts, Conversations, EventInput,
     Events, Kb, Macros, MessageInput, MessageKind, Reports, Search, Tickets, Webhooks, Workspace,
-    AGENT_HANDLING_SETTABLE_STATES, MACRO_ACTION_KEYS, MACRO_SCOPES, SEARCH_KINDS,
-    TICKET_BULK_ACTIONS,
+    AGENT_HANDLING_SETTABLE_STATES, MACRO_ACTION_KEYS, MACRO_LIBRARY_CAP, MACRO_SCOPES,
+    SEARCH_KINDS, TICKET_BULK_ACTIONS,
 };
 
 /// Re-exported so you can build request bodies with `serde_json::json!`

@@ -13,7 +13,7 @@
 mod common;
 
 use chatly::{ChatlyClient, Query};
-use common::{client, MockTransport};
+use common::{client, shape_for, BodyShape, MockTransport};
 use serde_json::json;
 use std::sync::Arc;
 
@@ -21,13 +21,13 @@ const BASE: &str = "https://api.chatlychat.com";
 
 /// Run `call`, then assert the single request it made.
 fn expect<T>(
-    body: &str,
+    shape: BodyShape,
     call: impl FnOnce(&ChatlyClient) -> T,
     method: &str,
     path: &str,
 ) -> Arc<MockTransport> {
     let mock = MockTransport::new();
-    mock.push_json(200, body);
+    mock.push_json(200, shape.body());
     let chatly = client(&mock);
     let _ = call(&chatly);
     let request = mock.only_request();
@@ -36,9 +36,12 @@ fn expect<T>(
     mock
 }
 
-/// For the paginated list endpoints, whose bodies must be a page.
-const PAGE: &str = r#"{"items":[],"nextCursor":null}"#;
-const OBJ: &str = "{}";
+/// The 7 genuinely cursor-paginated routes, whose bodies must be a page.
+const PAGE: BodyShape = BodyShape::Page;
+/// A bare JSON array — `GET /v1/macros` and nothing else here.
+const ARRAY: BodyShape = BodyShape::Array;
+/// Everything else: one entity, a report, a settings blob, a write result.
+const OBJ: BodyShape = BodyShape::Object;
 
 #[test]
 fn root_whoami() {
@@ -256,6 +259,25 @@ fn macros_surface() {
     );
 }
 
+/// `macros().list` must read a bare array. It deserialised into `Page`
+/// until 2026-10-12, so a real call raised `ChatlyError::Decode` — and this
+/// suite did not notice, because the fake answered every route with a page
+/// envelope. Both halves of that are now asserted.
+#[test]
+fn macros_list_reads_a_bare_array_and_refuses_a_page_envelope() {
+    let mock = MockTransport::new();
+    mock.push_json(200, r#"[{"id":"m_1"},{"id":"m_2"}]"#);
+    let out = client(&mock).macros().list(&Query::new()).unwrap();
+    assert!(out.is_array(), "expected a bare array, got {out}");
+    assert_eq!(out.as_array().map(Vec::len), Some(2));
+    assert_eq!(shape_for("macros", "list"), Some(BodyShape::Array));
+
+    // And it is not one of the paginated namespaces: there is no
+    // `macros().iter()` to call. That is enforced by the type system rather
+    // than here, so what this asserts is the shape table's own claim.
+    assert_ne!(shape_for("macros", "list"), Some(BodyShape::Page));
+}
+
 #[test]
 fn kb_surface() {
     expect(
@@ -294,7 +316,7 @@ fn search_surface() {
 #[test]
 fn search_kb_narrows_with_a_plain_kinds_key() {
     let mock = MockTransport::new();
-    mock.push_json(200, OBJ);
+    mock.push_json(200, OBJ.body());
     client(&mock).search().kb("refund", &Query::new()).unwrap();
     let url = mock.only_request().url;
     assert_eq!(url, format!("{BASE}/v1/search?q=refund&kinds=kb"));
@@ -302,7 +324,7 @@ fn search_kb_narrows_with_a_plain_kinds_key() {
 
     // Two kinds stay two parameters.
     let mock = MockTransport::new();
-    mock.push_json(200, OBJ);
+    mock.push_json(200, OBJ.body());
     client(&mock)
         .search()
         .query(
@@ -464,7 +486,7 @@ fn workspace_surface() {
 
 fn sent_body(call: impl FnOnce(&ChatlyClient)) -> serde_json::Value {
     let mock = MockTransport::new();
-    mock.push_json(200, OBJ);
+    mock.push_json(200, OBJ.body());
     call(&client(&mock));
     let text = mock.only_request().body_text().expect("a body was sent");
     serde_json::from_str(&text).expect("the body is JSON")
@@ -555,9 +577,9 @@ fn set_agent_handling_state_sends_state_and_refuses_an_unsettable_one() {
 #[test]
 fn add_tags_issues_one_request_per_tag_and_refuses_an_empty_list() {
     let mock = MockTransport::new();
-    mock.push_json(200, OBJ)
-        .push_json(200, OBJ)
-        .push_json(200, OBJ);
+    mock.push_json(200, OBJ.body())
+        .push_json(200, OBJ.body())
+        .push_json(200, OBJ.body());
     client(&mock)
         .contacts()
         .add_tags("c_1", &["a", "b", "c"])
@@ -585,7 +607,7 @@ fn add_tags_issues_one_request_per_tag_and_refuses_an_empty_list() {
 #[test]
 fn repeated_query_keys_stay_repeated_on_the_wire() {
     let mock = MockTransport::new();
-    mock.push_json(200, PAGE);
+    mock.push_json(200, PAGE.body());
     client(&mock)
         .contacts()
         .list(
@@ -607,7 +629,7 @@ fn repeated_query_keys_stay_repeated_on_the_wire() {
 #[test]
 fn path_parameters_are_percent_encoded() {
     let mock = MockTransport::new();
-    mock.push_json(200, OBJ);
+    mock.push_json(200, OBJ.body());
     client(&mock)
         .contacts()
         .remove_tag("c_1", "vip customer/eu")

@@ -5,8 +5,13 @@ use serde_json::Value;
 
 use crate::client::ChatlyClient;
 use crate::error::ChatlyError;
-use crate::pagination::{Page, PageIter};
 use crate::query::{encode_path_segment, Query};
+
+/// How many macros `GET /v1/macros` returns at most.
+///
+/// The route is pagination-exempt; the service caps the result here and
+/// orders by usage rank. There is no cursor to ask for row 201.
+pub const MACRO_LIBRARY_CAP: usize = 200;
 
 /// The `scope` values a macro can have.
 pub const MACRO_SCOPES: [&str; 3] = ["workspace", "team", "personal"];
@@ -43,18 +48,25 @@ impl<'a> Macros<'a> {
         Self { client }
     }
 
-    /// `GET /v1/macros` — one page.
+    /// `GET /v1/macros` — the macro library, as a **bare JSON array**.
+    ///
+    /// Not cursor-paginated, and the one list route in this crate that is
+    /// not: the handler is `@PaginationExempt`, caps the result at 200 rows
+    /// and orders by usage rank, so there is no `{ items, nextCursor }`
+    /// envelope and no `iter()` here. Deserialising this into a
+    /// [`crate::Page`] raises [`ChatlyError::Decode`] — which is exactly
+    /// what this method used to do, because the shared manifest said
+    /// `paged: true` and the test transport answered every route with a
+    /// page envelope, so the suite agreed with the mistake.
+    ///
+    /// If 200 is not enough, narrow with `filter[]` rather than reaching for
+    /// a cursor that does not exist.
     ///
     /// # Errors
     ///
     /// Any [`ChatlyError`].
-    pub fn list(&self, query: &Query) -> Result<Page<Value>, ChatlyError> {
-        self.client.get_page("/v1/macros", query)
-    }
-
-    /// `GET /v1/macros` — every page, as an iterator.
-    pub fn iter(&self, query: &Query) -> PageIter<Value> {
-        self.client.paginate("/v1/macros", query)
+    pub fn list(&self, query: &Query) -> Result<Value, ChatlyError> {
+        self.client.get("/v1/macros", query)
     }
 
     /// `POST /v1/macros` — create a macro.

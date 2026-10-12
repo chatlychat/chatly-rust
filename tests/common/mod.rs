@@ -130,3 +130,85 @@ pub fn retrying_client(mock: &Arc<MockTransport>, max_attempts: u32) -> ChatlyCl
 pub fn no_retries() -> RetryPolicy {
     RetryPolicy::none()
 }
+
+// ---------------------------------------------------------------------------
+// Per-route response shapes.
+//
+// A fake transport that answers every route with `{"items":[],"nextCursor":
+// null}` agrees with any mistake about which routes are paginated. That is
+// not hypothetical: the shared manifest briefly marked `GET /v1/macros`
+// `paged: true`, this SDK's `macros().list` deserialised into `Page`, and
+// real callers got `ChatlyError::Decode` while the suite stayed green —
+// because the page envelope the fake returned was the one shape the route
+// never sends. The .NET SDK had the identical pair of bugs.
+//
+// So the fake answers each route the shape that route really returns, and
+// `tests/surface_lock.rs` cross-checks this table against the manifest's
+// `paged` flags in both directions.
+// ---------------------------------------------------------------------------
+
+/// The top-level JSON shape a route answers with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BodyShape {
+    /// `{ "items": [...], "nextCursor": … }` — a cursor page.
+    Page,
+    /// A bare top-level JSON array.
+    Array,
+    /// A single top-level JSON object that is not a page.
+    Object,
+}
+
+impl BodyShape {
+    /// A body of this shape.
+    ///
+    /// **Non-empty on purpose.** The empty forms are not distinguishable by
+    /// a lenient deserialiser — `[]`, `{}` and
+    /// `{"items":[],"nextCursor":null}` were all accepted by a derived
+    /// `Page`, so a fake that answered `[]` could not tell a correct
+    /// `macros().list` from one that still deserialised into a `Page`. Each
+    /// of these carries a row, so the three shapes are actually distinct.
+    pub fn body(self) -> &'static str {
+        match self {
+            Self::Page => r#"{"items":[{"id":"row_1"}],"nextCursor":null}"#,
+            Self::Array => r#"[{"id":"row_1"}]"#,
+            Self::Object => r#"{"id":"row_1"}"#,
+        }
+    }
+
+    /// A body of this shape carrying one row, for tests that read a value
+    /// back out.
+    pub fn body_with_row(self, row: &str) -> String {
+        match self {
+            Self::Page => format!(r#"{{"items":[{row}],"nextCursor":null}}"#),
+            Self::Array => format!("[{row}]"),
+            Self::Object => row.to_owned(),
+        }
+    }
+}
+
+/// What `ns.name` answers with.
+///
+/// Every entry in `packages/sdk-spec/surface.json` must appear here;
+/// `tests/surface_lock.rs` fails if one does not, so a new manifest method
+/// cannot quietly inherit a default shape.
+pub fn shape_for(ns: &str, name: &str) -> Option<BodyShape> {
+    let shape = match (ns, name) {
+        // The 7 genuinely cursor-paginated routes.
+        ("contacts", "list")
+        | ("conversations", "list")
+        | ("conversations", "messages")
+        | ("tickets", "list")
+        | ("kb", "articles")
+        | ("events", "list")
+        | ("webhooks", "deliveries") => BodyShape::Page,
+
+        // Bare arrays. `macros.list` is the one this table exists for.
+        ("macros", "list") => BodyShape::Array,
+
+        // Everything else is a single object: one entity, a report, a
+        // settings blob, a write's result, or a 204 (which this crate
+        // decodes to `Value::Null` and which `Object` stands in for here).
+        _ => BodyShape::Object,
+    };
+    Some(shape)
+}
