@@ -380,9 +380,10 @@ pub fn entry_for_request(method: &str, path: &str) -> Option<&'static ManifestEn
         }
         let expected: Vec<&str> = entry.path.split('/').collect();
         expected.len() == actual.len()
-            && expected.iter().zip(actual.iter()).all(|(want, got)| {
-                (want.starts_with('{') && want.ends_with('}')) || want == got
-            })
+            && expected
+                .iter()
+                .zip(actual.iter())
+                .all(|(want, got)| (want.starts_with('{') && want.ends_with('}')) || want == got)
     })
 }
 
@@ -391,9 +392,8 @@ pub fn entry_for_request(method: &str, path: &str) -> Option<&'static ManifestEn
 /// Panics if the path is not a manifest path, or if the manifest entry has
 /// no recorded shape — both are failures worth stopping for.
 pub fn shape_for_request(method: &str, path: &str) -> BodyShape {
-    let entry = entry_for_request(method, path).unwrap_or_else(|| {
-        panic!("{method} {path} does not correspond to any surface.json entry")
-    });
+    let entry = entry_for_request(method, path)
+        .unwrap_or_else(|| panic!("{method} {path} does not correspond to any surface.json entry"));
     shape_for(&entry.ns, &entry.name)
         .unwrap_or_else(|| panic!("no response shape recorded for {}.{}", entry.ns, entry.name))
 }
