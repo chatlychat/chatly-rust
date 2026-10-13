@@ -448,8 +448,28 @@ struct ManifestFile {
 }
 
 /// Where the manifest lives, relative to this package.
+///
+/// TWO candidates, and the second one is why this is a function. In the
+/// monorepo the spec sits beside this package at `../sdk-spec/`. In the public
+/// mirror there is no `packages/` directory, so `sync-sdk-repos.mjs` vendors
+/// it to `<repo>/sdk-spec/` instead.
+///
+/// Looking only at the monorepo path is a mistake this repository has now made
+/// four times — three SDKs once, and these shape tests again. It is invisible
+/// locally, where the first candidate always resolves, and the mirror CI is
+/// the only thing that runs the other case.
+///
+/// Falls back to the monorepo path when neither exists, so the panic below
+/// names the canonical location rather than wherever we looked last.
 pub fn manifest_path() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../sdk-spec/surface.json")
+    let package = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for candidate in [package.join("../sdk-spec"), package.join("sdk-spec")] {
+        let path = candidate.join("surface.json");
+        if path.exists() {
+            return path;
+        }
+    }
+    package.join("../sdk-spec/surface.json")
 }
 
 fn manifest_file() -> &'static ManifestFile {
