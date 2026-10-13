@@ -195,12 +195,47 @@ impl BodyShape {
             Self::Empty => "",
         }
     }
+
+    /// The name this shape has in `surface.json` and in every lock file.
+    ///
+    /// The lock's `shape` column is this string, so the four spellings are
+    /// cross-language wire values and not local cosmetics.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Page => "page",
+            Self::Array => "array",
+            Self::Object => "object",
+            Self::Empty => "empty",
+        }
+    }
 }
 
 /// What `ns.name` answers with, for all 55 manifest methods.
 ///
-/// Resolved from each handler's `@ZodResponse(...)` schema, or from the
-/// service's declared return type where the handler has no such decorator.
+/// ═══ READ THIS BEFORE CHANGING A VALUE ══════════════════════════════════
+///
+/// Hand-written, from each handler's `@ZodResponse(...)` schema — or from the
+/// service return type it forwards where the handler has no such decorator.
+/// **Deliberately NOT read from `surface.json`**, even though this module
+/// loads that manifest for paths and `paged` flags.
+///
+/// A fixture derived from the manifest agrees with whatever the manifest
+/// says, including when it is wrong, and that is not hypothetical:
+/// `GET /v1/macros` was marked `paged: true` for a day while its handler is
+/// `@PaginationExempt` and answers a bare array. This crate's `macros().list`
+/// deserialised that into a `Page`; worse than the .NET client's decode
+/// error, a derived `Page` read the bare array as an **empty page** and
+/// handed it back with a 200 — a wrong answer rather than a missing one. The
+/// suite stayed green because the fake answered every route with
+/// `{ items, nextCursor }`, the one shape that route never sends.
+///
+/// So this table is a second opinion. `tests/surface_lock.rs` feeds each
+/// method the shape declared HERE, asserts the value it hands back really
+/// has that shape, and writes this column into `surface.lock.json`;
+/// `scripts/check-sdk-surface-parity.mjs` then diffs eight independently
+/// written columns against the manifest. A wrong manifest row needs eight
+/// authors to misread the same handler.
+///
 /// Returns `None` for anything not listed, and `tests/surface_lock.rs`
 /// treats that as a failure — there is deliberately **no catch-all arm**, so
 /// a method added to the manifest cannot quietly inherit a default shape.
@@ -210,12 +245,11 @@ impl BodyShape {
 ///
 /// - **Fourteen routes return a bare array**, not an envelope. All of them
 ///   are `@PaginationExempt`, so there is no cursor to ask for more.
-/// - **`contacts.journey`, `conversations.unattended` and `search.query`
-///   return page envelopes but are NOT marked `paged` in the manifest.** The
-///   manifest flag says "this SDK offers an auto-paginator", not "the wire
-///   shape is a page", and those three do not get one. So the cross-check in
-///   `surface_lock.rs` runs one way only: `paged` implies `Page`, not the
-///   converse.
+/// - **Three rows look wrong and are not.** `contacts.remove_tag` is a
+///   DELETE answering with the surviving contact, and
+///   `conversations.cancel_scheduled` a DELETE answering with the cancelled
+///   row, so two of this surface's three deletes have bodies. Two of the
+///   four report routes are bare arrays.
 /// - **`macros.delete` is the only 204.**
 pub fn shape_for(ns: &str, name: &str) -> Option<BodyShape> {
     use BodyShape::{Array, Empty, Object, Page};
@@ -231,7 +265,6 @@ pub fn shape_for(ns: &str, name: &str) -> Option<BodyShape> {
         // Answers the surviving contact, not a 204.
         ("contacts", "remove_tag") => Object,
         ("contacts", "unsubscribe") => Object,
-        // A page envelope, though the manifest does not mark it paged.
         ("contacts", "journey") => Page,
 
         ("conversations", "list") => Page,
@@ -268,7 +301,7 @@ pub fn shape_for(ns: &str, name: &str) -> Option<BodyShape> {
         ("kb", "article") => Object,
         ("kb", "collections") => Array,
 
-        // Page plus `tier` and `facets`; not manifest-paged.
+        // Page plus `tier` and `facets`.
         ("search", "query") => Page,
 
         ("events", "track") => Object,
@@ -299,6 +332,91 @@ pub fn shape_for(ns: &str, name: &str) -> Option<BodyShape> {
         _ => return None,
     };
     Some(shape)
+}
+
+/// What a method handed back, in a form the suite can classify.
+///
+/// The value matters, not only that the call returned `Ok`. A method that
+/// unwrapped a page into its `items`, or wrapped a bare array into a
+/// one-element envelope, issues a *perfect* request and hands back the wrong
+/// thing — and nothing here could see that while the invocation table threw
+/// the value away with `.map(|_| ())`.
+#[derive(Debug)]
+pub enum Returned {
+    /// An untyped `serde_json::Value`, as most methods on this client return.
+    Value(serde_json::Value),
+    /// A typed [`chatly::Page`], as the eight `Page`-returning methods do.
+    Page(chatly::Page<serde_json::Value>),
+}
+
+impl Returned {
+    /// Wrap an untyped return value. Written as a function so the invocation
+    /// table can say `.map(Returned::value)`.
+    pub fn value(value: serde_json::Value) -> Self {
+        Self::Value(value)
+    }
+
+    /// Wrap a typed page return value.
+    pub fn page(page: chatly::Page<serde_json::Value>) -> Self {
+        Self::Page(page)
+    }
+
+    /// The shape this value really has, in [`BodyShape`]'s vocabulary.
+    ///
+    /// Structural for a `Value`, the same test the Node suite's `actualShape`
+    /// makes: a JSON array is `Array`; `null` — which is what this crate
+    /// decodes a 204 to — is `Empty`; an object carrying an `items` array
+    /// *and* a `nextCursor` key is `Page`; any other object is `Object`.
+    ///
+    /// A typed `Page<T>` can only answer `Page`, because its deserialiser
+    /// refuses every other body. So for those the shape is not the
+    /// interesting question and [`Self::carries_the_fixture_row`] is: a
+    /// method that returned `Page::default()` without decoding anything
+    /// would classify as a perfectly good page here.
+    pub fn shape(&self) -> BodyShape {
+        match self {
+            Self::Page(_) => BodyShape::Page,
+            Self::Value(serde_json::Value::Null) => BodyShape::Empty,
+            Self::Value(serde_json::Value::Array(_)) => BodyShape::Array,
+            Self::Value(serde_json::Value::Object(map)) => {
+                if map.get("items").is_some_and(serde_json::Value::is_array)
+                    && map.contains_key("nextCursor")
+                {
+                    BodyShape::Page
+                } else {
+                    BodyShape::Object
+                }
+            }
+            // A scalar is not one of the four. Reported as `Object` would
+            // hide it, so it is reported as the shape it is least like.
+            Self::Value(_) => BodyShape::Array,
+        }
+    }
+
+    /// Whether the single `{"id":"row_1"}` row the fake sends survived the
+    /// trip, wherever that row belongs for this shape.
+    ///
+    /// `Empty` carries nothing and is vacuously true; everything else must
+    /// show the row, which is what catches a method that decodes into a
+    /// default value, or into a type that silently drops the payload.
+    pub fn carries_the_fixture_row(&self) -> bool {
+        let row = |value: Option<&serde_json::Value>| {
+            value
+                .and_then(|v| v.get("id"))
+                .and_then(serde_json::Value::as_str)
+                == Some("row_1")
+        };
+        match self {
+            Self::Page(page) => page.items.len() == 1 && row(page.items.first()),
+            Self::Value(serde_json::Value::Null) => true,
+            Self::Value(value @ serde_json::Value::Object(map)) => match map.get("items") {
+                Some(serde_json::Value::Array(items)) => items.len() == 1 && row(items.first()),
+                _ => row(Some(value)),
+            },
+            Self::Value(serde_json::Value::Array(items)) => items.len() == 1 && row(items.first()),
+            Self::Value(_) => false,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -357,6 +475,34 @@ pub fn manifest() -> &'static [ManifestEntry] {
 /// The manifest's declared base URL.
 pub fn manifest_base_url() -> &'static str {
     &manifest_file().base_url
+}
+
+/// Fold concrete path segments back to the manifest's `{...}` names, by
+/// position.
+///
+/// Every non-parameter segment is kept as the client actually produced it, so
+/// a method that hits `/v1/contact/{id}` instead of `/v1/contacts/{id}` is
+/// reported by the caller's comparison rather than normalised into agreement.
+pub fn normalise(actual: &str, manifest: &str) -> String {
+    let actual_segments: Vec<&str> = actual.split('/').collect();
+    let manifest_segments: Vec<&str> = manifest.split('/').collect();
+    if actual_segments.len() != manifest_segments.len() {
+        // Return the actual path untouched; the caller's comparison reports
+        // it, which is more useful than a panic here.
+        return actual.to_owned();
+    }
+    manifest_segments
+        .iter()
+        .zip(actual_segments.iter())
+        .map(|(expected, got)| {
+            if expected.starts_with('{') && expected.ends_with('}') {
+                (*expected).to_owned()
+            } else {
+                (*got).to_owned()
+            }
+        })
+        .collect::<Vec<String>>()
+        .join("/")
 }
 
 /// Find the manifest entry a concrete request corresponds to.
