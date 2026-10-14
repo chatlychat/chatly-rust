@@ -5,7 +5,11 @@
 //! order, which is what lets a test assert on headers that were actually
 //! built by the real dispatch path rather than on a reimplementation of it.
 
-#![allow(dead_code)]
+// Every suite includes this module and uses a different part of it, so what
+// is dead here is live two files over — and a re-export that one suite does
+// not name is not an unused import, it is this suite's share of a shared
+// surface.
+#![allow(dead_code, unused_imports)]
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -139,200 +143,51 @@ pub fn no_retries() -> RetryPolicy {
     RetryPolicy::none()
 }
 
+/// The production host every path assertion is built against.
+///
+/// Not a test-only base URL: `client` above deliberately does not override
+/// the default, so these assertions also prove the default is the production
+/// host rather than taking it on trust (CONTRACT.md §1 and §10.1).
+pub const BASE: &str = chatly::DEFAULT_BASE_URL;
+
+/// Run `call` against a fake answering `shape`, then assert the single
+/// request it made.
+///
+/// Shared by `tests/surface.rs` and `tests/surface_paths.rs`. The return
+/// value is the transport, so a caller can go on to assert on the body or
+/// the headers of the request it just checked the path of.
+pub fn expect<T>(
+    shape: BodyShape,
+    call: impl FnOnce(&ChatlyClient) -> T,
+    method: &str,
+    path: &str,
+) -> std::sync::Arc<MockTransport> {
+    let mock = MockTransport::new();
+    mock.push_json(200, shape.body());
+    let chatly = client(&mock);
+    let _ = call(&chatly);
+    let request = mock.only_request();
+    assert_eq!(request.method, method, "verb for {path}");
+    assert_eq!(request.url, format!("{BASE}{path}"), "path for {path}");
+    mock
+}
+
 // ---------------------------------------------------------------------------
-// Per-route response shapes.
+// Per-route response shapes live in `shapes.rs`, and the invocation table in
+// `invocations.rs`.
 //
-// A fake transport that answers every route with `{"items":[],"nextCursor":
-// null}` agrees with any mistake about which routes are paginated. That is
-// not hypothetical: the shared manifest briefly marked `GET /v1/macros`
-// `paged: true`, this SDK's `macros().list` deserialised into `Page`, and
-// real callers got `ChatlyError::Decode` while the suite stayed green —
-// because the page envelope the fake returned was the one shape the route
-// never sends. The .NET SDK had the identical pair of bugs.
-//
-// So the fake answers each route the shape that route really returns, and
-// `tests/surface_lock.rs` cross-checks this table against the manifest's
-// `paged` flags in both directions.
+// Both are data rather than machinery, and both are long: 159 routes with a
+// hand-declared shape each, and 159 closures that actually call them. Kept
+// here, this file would be past the contract's 650-line ceiling (§9) by
+// itself. Re-exported so every suite still says `common::shape_for`.
 // ---------------------------------------------------------------------------
 
-/// The top-level JSON shape a route answers with.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BodyShape {
-    /// `{ "items": [...], "nextCursor": … }` — a cursor page. Several routes
-    /// add siblings (`hasMore`, `total`, `tier`/`facets`); those are the same
-    /// shape as far as a client is concerned.
-    Page,
-    /// A bare top-level JSON array. Fourteen routes do this.
-    Array,
-    /// A single top-level JSON object that is not a page.
-    Object,
-    /// `204 No Content`, which this crate decodes to `Value::Null`.
-    Empty,
-}
+pub mod invocations;
+pub mod invocations_added;
+pub mod shapes;
 
-impl BodyShape {
-    /// The HTTP status to answer with.
-    pub fn status(self) -> u16 {
-        match self {
-            Self::Empty => 204,
-            _ => 200,
-        }
-    }
-
-    /// A body of this shape.
-    ///
-    /// **Non-empty on purpose.** The empty forms are not distinguishable by
-    /// a lenient deserialiser — `[]`, `{}` and
-    /// `{"items":[],"nextCursor":null}` were all accepted by a derived
-    /// `Page`, so a fake that answered `[]` could not tell a correct
-    /// `macros().list` from one that still deserialised into a `Page`. Each
-    /// of these carries a row, so the shapes are actually distinct.
-    pub fn body(self) -> &'static str {
-        match self {
-            Self::Page => r#"{"items":[{"id":"row_1"}],"nextCursor":null}"#,
-            Self::Array => r#"[{"id":"row_1"}]"#,
-            Self::Object => r#"{"id":"row_1"}"#,
-            Self::Empty => "",
-        }
-    }
-
-    /// The name this shape has in `surface.json` and in every lock file.
-    ///
-    /// The lock's `shape` column is this string, so the four spellings are
-    /// cross-language wire values and not local cosmetics.
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Page => "page",
-            Self::Array => "array",
-            Self::Object => "object",
-            Self::Empty => "empty",
-        }
-    }
-}
-
-/// What `ns.name` answers with, for all 55 manifest methods.
-///
-/// ═══ READ THIS BEFORE CHANGING A VALUE ══════════════════════════════════
-///
-/// Hand-written, from each handler's `@ZodResponse(...)` schema — or from the
-/// service return type it forwards where the handler has no such decorator.
-/// **Deliberately NOT read from `surface.json`**, even though this module
-/// loads that manifest for paths and `paged` flags.
-///
-/// A fixture derived from the manifest agrees with whatever the manifest
-/// says, including when it is wrong, and that is not hypothetical:
-/// `GET /v1/macros` was marked `paged: true` for a day while its handler is
-/// `@PaginationExempt` and answers a bare array. This crate's `macros().list`
-/// deserialised that into a `Page`; worse than the .NET client's decode
-/// error, a derived `Page` read the bare array as an **empty page** and
-/// handed it back with a 200 — a wrong answer rather than a missing one. The
-/// suite stayed green because the fake answered every route with
-/// `{ items, nextCursor }`, the one shape that route never sends.
-///
-/// So this table is a second opinion. `tests/surface_lock.rs` feeds each
-/// method the shape declared HERE, asserts the value it hands back really
-/// has that shape, and writes this column into `surface.lock.json`;
-/// `scripts/check-sdk-surface-parity.mjs` then diffs eight independently
-/// written columns against the manifest. A wrong manifest row needs eight
-/// authors to misread the same handler.
-///
-/// Returns `None` for anything not listed, and `tests/surface_lock.rs`
-/// treats that as a failure — there is deliberately **no catch-all arm**, so
-/// a method added to the manifest cannot quietly inherit a default shape.
-/// That matters because the default used to be `Page`, for every route.
-///
-/// Three things in here are worth knowing before you trust a shape:
-///
-/// - **Fourteen routes return a bare array**, not an envelope. All of them
-///   are `@PaginationExempt`, so there is no cursor to ask for more.
-/// - **Three rows look wrong and are not.** `contacts.remove_tag` is a
-///   DELETE answering with the surviving contact, and
-///   `conversations.cancel_scheduled` a DELETE answering with the cancelled
-///   row, so two of this surface's three deletes have bodies. Two of the
-///   four report routes are bare arrays.
-/// - **`macros.delete` is the only 204.**
-pub fn shape_for(ns: &str, name: &str) -> Option<BodyShape> {
-    use BodyShape::{Array, Empty, Object, Page};
-    let shape = match (ns, name) {
-        ("root", "whoami") => Object,
-
-        ("contacts", "list") => Page,
-        ("contacts", "get") => Object,
-        ("contacts", "upsert") => Object,
-        ("contacts", "bulk_upsert") => Object,
-        ("contacts", "merge") => Object,
-        ("contacts", "add_tags") => Object,
-        // Answers the surviving contact, not a 204.
-        ("contacts", "remove_tag") => Object,
-        ("contacts", "unsubscribe") => Object,
-        ("contacts", "journey") => Page,
-
-        ("conversations", "list") => Page,
-        ("conversations", "get") => Object,
-        ("conversations", "messages") => Page,
-        ("conversations", "send") => Object,
-        // Page plus a `total` that is not `items.len()`.
-        ("conversations", "unattended") => Page,
-        ("conversations", "agent_handling") => Object,
-        ("conversations", "set_agent_handling") => Object,
-        ("conversations", "generated_replies") => Array,
-        ("conversations", "generate_reply") => Object,
-        ("conversations", "scheduled_messages") => Array,
-        ("conversations", "schedule_message") => Object,
-        // Answers the scheduled message as it ended up, not a 204.
-        ("conversations", "cancel_scheduled") => Object,
-
-        // Page plus `hasMore`.
-        ("tickets", "list") => Page,
-        ("tickets", "comments") => Array,
-        ("tickets", "for_conversation") => Array,
-        ("tickets", "queues") => Array,
-        ("tickets", "merge") => Object,
-        ("tickets", "split") => Object,
-        ("tickets", "bulk") => Object,
-
-        // The bare array this whole table exists for.
-        ("macros", "list") => Array,
-        ("macros", "create") => Object,
-        ("macros", "update") => Object,
-        ("macros", "delete") => Empty,
-
-        ("kb", "articles") => Page,
-        ("kb", "article") => Object,
-        ("kb", "collections") => Array,
-
-        // Page plus `tier` and `facets`.
-        ("search", "query") => Page,
-
-        ("events", "track") => Object,
-        ("events", "list") => Page,
-
-        ("webhooks", "deliveries") => Page,
-        ("webhooks", "delivery") => Object,
-        ("webhooks", "redeliver") => Object,
-
-        ("reports", "overview") => Object,
-        ("reports", "agents") => Array,
-        ("reports", "conversations_by_day") => Array,
-        ("reports", "sla") => Object,
-
-        ("channels", "list") => Array,
-        ("channels", "get") => Object,
-
-        ("billing", "plans") => Array,
-        ("billing", "usage") => Object,
-
-        ("workspace", "settings") => Object,
-        ("workspace", "labels") => Array,
-        ("workspace", "inboxes") => Array,
-        ("workspace", "team_members") => Array,
-        // `{ "skills": [...] }`, not a bare array.
-        ("workspace", "agent_skills") => Object,
-
-        _ => return None,
-    };
-    Some(shape)
-}
+pub use invocations::{invocations, Invocation};
+pub use shapes::{shape_for, BodyShape};
 
 /// What a method handed back, in a form the suite can classify.
 ///
@@ -345,7 +200,7 @@ pub fn shape_for(ns: &str, name: &str) -> Option<BodyShape> {
 pub enum Returned {
     /// An untyped `serde_json::Value`, as most methods on this client return.
     Value(serde_json::Value),
-    /// A typed [`chatly::Page`], as the eight `Page`-returning methods do.
+    /// A typed [`chatly::Page`], as the thirteen `Page`-returning methods do.
     Page(chatly::Page<serde_json::Value>),
 }
 
@@ -435,7 +290,9 @@ pub struct ManifestEntry {
     /// Path with `{...}` parameters.
     pub path: String,
     /// `true` on the routes that answer `{ items, nextCursor }` and for
-    /// which every SDK offers an auto-paginating form. Ten of them.
+    /// which every SDK offers an auto-paginating form. Thirteen of them —
+    /// it read ten until 2026-10-14, and `bots.list`, `bots.deliveries` and
+    /// `triggers.list` were always pages that nothing had flagged.
     #[serde(default)]
     pub paged: Option<bool>,
 }

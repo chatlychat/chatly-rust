@@ -1,8 +1,9 @@
 //! What each call *carries*: request bodies, query encoding and the escape
 //! hatch.
 //!
-//! Split out of `tests/surface.rs`, which asserts the verb and path of all
-//! 55 methods. The field names asserted here were read off the API's own zod
+//! Split out of `tests/surface.rs`; `tests/surface_lock.rs` is what asserts
+//! the verb and path of all 159 methods against the manifest. The field
+//! names asserted here were read off the API's own zod
 //! schemas rather than guessed — a wrong one is a write that validates
 //! server-side and does nothing, which no status code reveals.
 

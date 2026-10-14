@@ -56,11 +56,16 @@
 //!
 //! **It does not model response bodies.** Every method returns
 //! [`serde_json::Value`] (or a [`Page`] of them). That is not laziness: this
-//! crate is generated from a hand-written method list
-//! (`packages/sdk-spec/surface.json`) that pins verbs and paths, and
-//! nothing pins response shapes. A hand-written `struct Contact` would be a
-//! guess that compiles, goes stale silently, and makes the test suite agree
-//! with it. If you want types, write them yourself and use
+//! crate is written against a hand-maintained method list
+//! (`packages/sdk-spec/surface.json`) that pins verbs, paths and the
+//! TOP-LEVEL shape of each answer — array, page, object or 204 — and
+//! nothing at all about the fields inside. A hand-written `struct Contact`
+//! would be a guess that compiles, goes stale silently, and makes the test
+//! suite agree with it. The top-level shape is worth knowing and this crate
+//! does tell you, per method; see also the shape table in
+//! `tests/common/shapes.rs`, which is the hand-written second opinion the
+//! parity gate diffs against the manifest. If you want field-level types,
+//! write them yourself and use
 //! [`ChatlyClient::request_as`] or [`ChatlyClient::paginate`], both of which
 //! are generic over any `Deserialize`.
 //!
@@ -94,6 +99,7 @@ mod crypto;
 mod decode;
 mod error;
 mod identity;
+mod namespaces;
 mod pagination;
 mod query;
 pub mod resources;
@@ -116,10 +122,14 @@ pub use webhooks::{
 };
 
 pub use resources::{
-    Billing, BulkContactsInput, Channels, ContactInput, Contacts, Conversations, EventInput,
-    Events, Kb, Macros, MessageInput, MessageKind, Reports, Search, Tickets, Webhooks, Workspace,
-    AGENT_HANDLING_SETTABLE_STATES, MACRO_ACTION_KEYS, MACRO_LIBRARY_CAP, MACRO_SCOPES,
-    SEARCH_KINDS, TICKET_BULK_ACTIONS, USAGE_EVENT_TYPES,
+    Ai, Billing, BotRoutes, Bots, Brands, BulkContactsInput, CanvasSteps, Channels, ContactInput,
+    Contacts, Conversations, CustomerCardEndpoints, CustomerCards, DocsSources, EmailTemplates,
+    EventInput, Events, Kb, KnowledgeGaps, Macros, MessageInput, MessageKind, Reports, Search,
+    Tickets, Triggers, Webhooks, Workspace, AGENT_HANDLING_SETTABLE_STATES, AI_PROVIDERS,
+    ATTRIBUTION_DIMENSIONS, CHANNEL_TYPES, CUSTOMER_CARD_CAP, DELIVERY_STATUSES, DOCS_PROVIDERS,
+    EMAIL_TEMPLATE_KINDS, GAP_STATUSES, MACRO_ACTION_KEYS, MACRO_LIBRARY_CAP, MACRO_SCOPES,
+    ROUTE_CONDITION_OPS, SEARCH_KINDS, TICKET_BULK_ACTIONS, TRIGGER_CONDITION_OPS,
+    USAGE_EVENT_TYPES,
 };
 
 /// Re-exported so you can build request bodies with `serde_json::json!`

@@ -12,7 +12,6 @@ use crate::decode::{decode_response, decode_value};
 use crate::error::ChatlyError;
 use crate::pagination::{Page, PageIter};
 use crate::query::Query;
-use crate::resources;
 use crate::retry::{is_write, parse_retry_after, RetryPolicy};
 use crate::transport::{HttpRequest, HttpResponse, Transport, UreqTransport};
 
@@ -275,11 +274,17 @@ impl ChatlyClient {
 
     /// Describe the credential this client is using.
     ///
-    /// `GET /v1/api-keys/whoami` is the only route on the api-keys controller
-    /// that accepts an API key at all — managing keys with a key is a
-    /// privilege-escalation shape. Make it your first call: it turns a
-    /// mis-scoped key into an obvious error at integration time instead of a
-    /// 403 from an unrelated endpoint three weeks later.
+    /// `GET /v1/api-keys/whoami` is one of only two routes on the api-keys
+    /// controller that accept an API key at all — managing keys with a key is
+    /// a privilege-escalation shape; the other is
+    /// [`Workspace::key_scopes`](crate::Workspace::key_scopes). Make it your
+    /// first call: it turns a mis-scoped key into an obvious error at
+    /// integration time instead of a 403 from an unrelated endpoint three
+    /// weeks later.
+    ///
+    /// It requires `workspace:read`, which is the one way it is **stricter**
+    /// than [`ChatlyClient::me`] — so for a pure liveness check, prefer that
+    /// one.
     ///
     /// The response carries the workspace id and the granted scopes. It is
     /// returned untyped because this crate does not model response bodies —
@@ -293,77 +298,47 @@ impl ChatlyClient {
         self.get("/v1/api-keys/whoami", &Query::new())
     }
 
-    /// Contacts: list, get, upsert, bulk upsert, merge, tags, unsubscribe,
-    /// journey.
-    pub fn contacts(&self) -> resources::Contacts<'_> {
-        resources::Contacts::new(self)
-    }
-
-    /// Conversations: list, get, messages, send, unattended, agent handling,
-    /// generated replies, scheduled messages.
-    pub fn conversations(&self) -> resources::Conversations<'_> {
-        resources::Conversations::new(self)
-    }
-
-    /// Tickets: list, comments, for-conversation, queues, merge, split, bulk.
-    pub fn tickets(&self) -> resources::Tickets<'_> {
-        resources::Tickets::new(self)
-    }
-
-    /// Macros: list, create, update, delete.
-    pub fn macros(&self) -> resources::Macros<'_> {
-        resources::Macros::new(self)
-    }
-
-    /// Knowledge base: articles, one article by slug, collections.
-    pub fn kb(&self) -> resources::Kb<'_> {
-        resources::Kb::new(self)
-    }
-
-    /// Full-text search across contacts, conversations, messages, tickets
-    /// and KB articles.
-    pub fn search(&self) -> resources::Search<'_> {
-        resources::Search::new(self)
-    }
-
-    /// CDP events: track and read back.
-    pub fn events(&self) -> resources::Events<'_> {
-        resources::Events::new(self)
-    }
-
-    /// Webhook deliveries: list, get, redeliver.
-    pub fn webhooks(&self) -> resources::Webhooks<'_> {
-        resources::Webhooks::new(self)
-    }
-
-    /// Reports: overview, agents, conversations by day, SLA.
-    pub fn reports(&self) -> resources::Reports<'_> {
-        resources::Reports::new(self)
-    }
-
-    /// Channels: list and get.
-    pub fn channels(&self) -> resources::Channels<'_> {
-        resources::Channels::new(self)
-    }
-
-    /// Billing: plans and usage.
-    pub fn billing(&self) -> resources::Billing<'_> {
-        resources::Billing::new(self)
-    }
-
-    /// Workspace configuration: settings, labels, inboxes, team rosters and
-    /// the agent-skill taxonomy.
-    pub fn workspace(&self) -> resources::Workspace<'_> {
-        resources::Workspace::new(self)
+    /// `GET /v1/me` — whoever is calling, user or key.
+    ///
+    /// A discriminated union on `principal`. For a `ck_` key it answers
+    /// `{ "principal": "api_key", … }` — **the same object as
+    /// [`ChatlyClient::whoami`]**, because there is no user behind a key. For
+    /// a signed-in person it answers `{ "principal": "user", … }` with their
+    /// profile and active membership, which an SDK caller will never see.
+    ///
+    /// **This is the liveness check to use.** It carries no
+    /// `@RequirePermission` at all, deliberately: everything it tells a key
+    /// is the key's own workspace id and its own grant list, which are the
+    /// two things the key presented in order to ask. So a key with no useful
+    /// scope still gets a 200 here, where
+    /// [`whoami`](ChatlyClient::whoami) needs `workspace:read` and
+    /// everything else needs something. Without it, integrators discover
+    /// their scopes by provoking 403s.
+    ///
+    /// Also answers on a **suspended** workspace, which is why the dashboard
+    /// can render the screen that says so.
+    ///
+    /// # Errors
+    ///
+    /// Any [`ChatlyError`]; [`ChatlyError::Authentication`] means the key is
+    /// not valid — and because this route asks for no scope, that is very
+    /// nearly the only failure it has.
+    pub fn me(&self) -> Result<Value, ChatlyError> {
+        self.get("/v1/me", &Query::new())
     }
 
     /// The escape hatch: call any key-accessible route by method and path.
     ///
-    /// 140 of the API's 886 routes accept a `ck_` key;
-    /// `packages/sdk-spec/surface.json` hand-writes methods for 55 of them.
-    /// This is how you reach the other 85 without abandoning the SDK — it
-    /// goes through the same auth, `Idempotency-Key`, retry and error
-    /// handling as every typed method above.
+    /// `packages/sdk-spec/surface.json` hand-writes methods for the 159
+    /// routes it lists, and `src/namespaces.rs` is where they hang off this
+    /// client. More of `apps/api` accepts a `ck_` key than that — the
+    /// manifest is the subset we committed to typed methods — and this is
+    /// how you reach the rest without abandoning the SDK: it goes through
+    /// the same auth, `Idempotency-Key`, retry and error handling as every
+    /// typed method.
+    ///
+    /// The one route known to be missing from the manifest today is
+    /// `DELETE /v1/webhooks/{id}` — see [`crate::resources::Webhooks`].
     ///
     /// `method` is case-insensitive. `POST`, `PUT`, `PATCH` and `DELETE` are
     /// treated as writes and get an `Idempotency-Key`. `path` is appended to

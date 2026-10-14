@@ -6,7 +6,7 @@
 //! whole exercise exists to close:
 //!
 //! 1. **The column could be unanimous.** A table that said `object` for all
-//!    55 routes would satisfy every assertion in the lock suite — each method
+//!    162 routes would satisfy every assertion in the lock suite — each method
 //!    would be fed an object, most of them really do answer objects, and the
 //!    manifest would have to be wrong in the same way for the diff to pass,
 //!    which is exactly the correlated failure the per-SDK column is supposed
@@ -63,14 +63,24 @@ fn declared_counts() -> BTreeMap<&'static str, usize> {
 
 /// Anti-vacuity: the declared shapes are not all the same value.
 ///
-/// The numbers come from reading all 55 `@ZodResponse` schemas on
-/// 2026-10-12: 14 `array`, 10 `page`, 30 `object`, 1 `empty`. They are
-/// asserted exactly rather than as floors because this is a 55-route surface
-/// that is pinned by a committed lock; when a route is added, this test is
-/// one of the places that must be updated on purpose. All four values must
-/// stay represented, and `empty` must stay at exactly one until a second
-/// real 204 genuinely ships — `macros.delete` is the only one today, and two
-/// of the other three DELETEs on this surface answer with a body.
+/// The numbers come from reading every `@ZodResponse` schema on the surface:
+/// 14 / 10 / 30 / 1 over the first 55 routes on 2026-10-12, and 32 `array`,
+/// 13 `page`, 113 `object`, 1 `empty` over the 159 on 2026-10-14, and
+/// 33 / 13 / 115 / 1 once `root.me`, `webhooks.delete` and `workspace.mine`
+/// joined the manifest later that day. They are
+/// asserted exactly rather than as floors because the surface is pinned by a
+/// committed lock; when a route is added, this test is one of the places that
+/// must be updated on purpose.
+///
+/// All four values must stay represented, and `empty` must stay at exactly
+/// one until a second real 204 genuinely ships — `macros.delete` is the only
+/// one today, and the other six DELETEs on this surface answer with a body
+/// (`contacts.remove_tag` with the surviving contact,
+/// `conversations.cancel_scheduled` with the cancelled row, and
+/// `ai.delete_tool`, `bot_routes.delete`, `brands.delete`,
+/// `customer_cards.delete`, `customer_card_endpoints.delete`,
+/// `docs_sources.delete`, `email_templates.delete`, `triggers.delete` and
+/// `webhooks.delete` each with an acknowledgement object).
 #[test]
 fn the_declared_shapes_are_distributed_as_the_handlers_are() {
     let counts = declared_counts();
@@ -81,7 +91,7 @@ fn the_declared_shapes_are_distributed_as_the_handlers_are() {
     );
     assert_eq!(
         counts,
-        [("array", 14), ("empty", 1), ("object", 30), ("page", 10)]
+        [("array", 33), ("empty", 1), ("object", 115), ("page", 13)]
             .into_iter()
             .collect::<BTreeMap<&str, usize>>(),
         "the declared shape column changed shape; if a route was added, say \
@@ -146,6 +156,17 @@ fn walkers() -> Vec<(&'static str, &'static str, Walk)> {
         ("webhooks", "deliveries", |c| {
             first_outcome(c.webhooks().iter_deliveries(&Query::new()))
         }),
+        // The three the manifest did not flag until 2026-10-14. All three end
+        // in `buildPaginatedResponse`, so all three really are pages.
+        ("bots", "list", |c| {
+            first_outcome(c.bots().iter(&Query::new()))
+        }),
+        ("bots", "deliveries", |c| {
+            first_outcome(c.bots().iter_deliveries("b_1", &Query::new()))
+        }),
+        ("triggers", "list", |c| {
+            first_outcome(c.triggers().iter(&Query::new()))
+        }),
     ]
 }
 
@@ -175,8 +196,8 @@ fn there_is_one_auto_paginator_for_each_page_route_and_nothing_else() {
     );
     assert_eq!(
         paged.len(),
-        10,
-        "expected 10 page routes, see the shape table"
+        13,
+        "expected 13 page routes, see the shape table"
     );
 }
 

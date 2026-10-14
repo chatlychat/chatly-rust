@@ -154,6 +154,115 @@ impl<'a> Tickets<'a> {
             .write("POST", "/v1/tickets/bulk", &Query::new(), Some(body))
     }
 
+    /// `GET /v1/tickets/{id}/conversations` — every conversation this ticket
+    /// covers, origin first, as a **bare JSON array**.
+    ///
+    /// The inverse of [`Tickets::for_conversation`]. It matters for a
+    /// *tracker* ticket: one outage that fifty customers wrote in about is
+    /// one ticket with fifty threads, and this is how you see all fifty.
+    ///
+    /// Rows are conversations — subject, status, channel — not link records.
+    /// With a human membership the list is narrowed to the inboxes that
+    /// person may open, so **an agent can hold a ticket and see fewer
+    /// conversations on it than it covers**; an API key is workspace-wide
+    /// and sees them all.
+    ///
+    /// # Errors
+    ///
+    /// Any [`ChatlyError`].
+    pub fn conversations(&self, id: &str, query: &Query) -> Result<Value, ChatlyError> {
+        self.client.get(
+            &format!("/v1/tickets/{}/conversations", encode_path_segment(id)),
+            query,
+        )
+    }
+
+    /// `GET /v1/tickets/{id}/status-history` — every recorded transition,
+    /// **oldest first**.
+    ///
+    /// An object, not an array. `timeInPreviousStatusSeconds` is computed on
+    /// read rather than stored, so it is always consistent with the rows
+    /// beside it.
+    ///
+    /// **Read `truncated`.** The service caps the timeline at 500
+    /// transitions, and that flag is the only thing distinguishing a capped
+    /// timeline from a short one — there is no cursor to ask for the rest.
+    ///
+    /// # Errors
+    ///
+    /// Any [`ChatlyError`]; [`ChatlyError::Validation`] if `id` is not a
+    /// UUID v7.
+    pub fn status_history(&self, id: &str, query: &Query) -> Result<Value, ChatlyError> {
+        self.client.get(
+            &format!("/v1/tickets/{}/status-history", encode_path_segment(id)),
+            query,
+        )
+    }
+
+    /// `GET /v1/tickets/{id}/lineage` — what this ticket was split from or
+    /// follows up, **and vice versa**.
+    ///
+    /// Both directions of both relationships, resolved to ticket numbers and
+    /// titles rather than bare ids, which is what makes it renderable
+    /// without a second round trip. Each list is capped at 25 and there is no
+    /// cursor.
+    ///
+    /// # Errors
+    ///
+    /// Any [`ChatlyError`]; [`ChatlyError::Validation`] if `id` is not a
+    /// UUID v7.
+    pub fn lineage(&self, id: &str, query: &Query) -> Result<Value, ChatlyError> {
+        self.client.get(
+            &format!("/v1/tickets/{}/lineage", encode_path_segment(id)),
+            query,
+        )
+    }
+
+    /// `GET /v1/tickets/open-count/{conversation_id}` — how much unfinished
+    /// work is on one thread.
+    ///
+    /// Answers `{ "openTickets": n }`. Note the path shape: the literal
+    /// segment comes **before** the id, so this is not
+    /// `/v1/tickets/{id}/open-count` and it is keyed on a **conversation**
+    /// id, not a ticket id. Getting that backwards is a 404 for a perfectly
+    /// good id.
+    ///
+    /// # Errors
+    ///
+    /// Any [`ChatlyError`]; [`ChatlyError::NotFound`] if the conversation is
+    /// not visible — which for a human membership includes an inbox they are
+    /// kept off, deliberately, since answering would confirm the id exists.
+    pub fn open_count(&self, conversation_id: &str) -> Result<Value, ChatlyError> {
+        self.client.get(
+            &format!(
+                "/v1/tickets/open-count/{}",
+                encode_path_segment(conversation_id)
+            ),
+            &Query::new(),
+        )
+    }
+
+    /// `GET /v1/tickets/{id}/time` — time logged against this ticket, with
+    /// totals.
+    ///
+    /// An object: `items`, `totalMinutes` and `billableMinutes`. **It has an
+    /// `items` key and no cursor, so it is not a page** — do not reach for a
+    /// paginator.
+    ///
+    /// `billableMinutes` is the figure that reaches an invoice and is
+    /// computed rather than inferable from `items` by summing, because
+    /// entries carry a billable flag.
+    ///
+    /// # Errors
+    ///
+    /// Any [`ChatlyError`].
+    pub fn time(&self, id: &str, query: &Query) -> Result<Value, ChatlyError> {
+        self.client.get(
+            &format!("/v1/tickets/{}/time", encode_path_segment(id)),
+            query,
+        )
+    }
+
     /// [`Tickets::merge`] with the `{ "loserId": … }` body built for you.
     ///
     /// # Errors

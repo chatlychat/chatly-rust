@@ -1,6 +1,6 @@
 //! Generates and verifies `surface.lock.json`.
 //!
-//! The lock is **executed evidence**. Each of the 55 entries in
+//! The lock is **executed evidence**. Each of the 162 entries in
 //! `packages/sdk-spec/surface.json` is produced by actually invoking the
 //! corresponding method against an injected transport and recording the
 //! `METHOD /path` the client built. Interpolated path segments are folded
@@ -18,7 +18,7 @@
 //!
 //! Each entry also records the top-level **response shape** this SDK's
 //! decoder expects — `array`, `page`, `object` or `empty`. That column is
-//! hand-written in `common::shape_for` and deliberately NOT read from the
+//! hand-written in `common::shapes` and deliberately NOT read from the
 //! manifest, because a fixture derived from the manifest agrees with the
 //! manifest even when the manifest is wrong. `macros.list` is the proof: it
 //! was flagged `paged: true` for a day, a derived `Page` read its bare array
@@ -35,6 +35,10 @@
 //!   for it, or drops the row the fake sent, or
 //! - the regenerated lock differs from the manifest, shape column included.
 //!
+//! The invocation table itself lives in `tests/common/invocations.rs`: 162
+//! closures and the assertions that drive them do not fit in one file under
+//! the contract's 650-line ceiling (§9).
+//!
 //! Run with `cargo test --test surface_lock`.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -44,10 +48,8 @@ mod common;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use chatly::{ChatlyClient, Query};
-use common::{client, normalise, shape_for, BodyShape, MockTransport, Returned};
+use common::{client, invocations, normalise, shape_for, BodyShape, Invocation, MockTransport};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 /// One manifest / lock entry. Field order here is the field order written to
 /// `surface.lock.json`: `ns, name, http, path, shape`.
@@ -109,223 +111,6 @@ fn manifest_path() -> PathBuf {
         return mirror;
     }
     monorepo
-}
-
-/// One method call, returning **both** the decoded value and the error.
-///
-/// Returning a `Result` rather than `()` is load-bearing: these closures once
-/// wrote `let _ = …`, which threw the error away, so a route answered with a
-/// shape its own return type could not decode still looked fine here. That is
-/// half of why `macros().list` could raise `ChatlyError::Decode` for real
-/// callers with this suite green.
-///
-/// Carrying the VALUE rather than `()` is the other half. A decoder can
-/// succeed and still be wrong — unwrap a page into its `items`, wrap an array
-/// into an envelope, or decode into a default that drops the payload — and
-/// the request it issued is perfect in every one of those cases.
-/// [`Returned`] exists so `observe` can classify what came back.
-type Invocation = fn(&ChatlyClient) -> Result<Returned, chatly::ChatlyError>;
-
-/// Every method in the manifest, as `(ns, name, invocation)`.
-///
-/// The closures capture nothing, so they coerce to `fn` pointers and this is
-/// a plain table. Arguments are throwaway; only the request that comes out,
-/// and whether the call succeeded, matter. Each closure must issue
-/// **exactly one** request — `add_tags` is given a single tag for that
-/// reason, since the underlying route takes one tag per call.
-#[allow(clippy::type_complexity)]
-fn invocations() -> Vec<(&'static str, &'static str, Invocation)> {
-    vec![
-        ("root", "whoami", |c| (c.whoami()).map(Returned::value)),
-        // -- contacts -----------------------------------------------------
-        ("contacts", "list", |c| {
-            (c.contacts().list(&Query::new())).map(Returned::page)
-        }),
-        ("contacts", "get", |c| {
-            (c.contacts().get("c_1")).map(Returned::value)
-        }),
-        ("contacts", "upsert", |c| {
-            (c.contacts().upsert(&json!({}))).map(Returned::value)
-        }),
-        ("contacts", "bulk_upsert", |c| {
-            (c.contacts().bulk_upsert(&json!({ "contacts": [] }))).map(Returned::value)
-        }),
-        ("contacts", "merge", |c| {
-            (c.contacts().merge("c_1", "c_2")).map(Returned::value)
-        }),
-        ("contacts", "add_tags", |c| {
-            (c.contacts().add_tags("c_1", &["vip"])).map(Returned::value)
-        }),
-        ("contacts", "remove_tag", |c| {
-            (c.contacts().remove_tag("c_1", "vip")).map(Returned::value)
-        }),
-        ("contacts", "unsubscribe", |c| {
-            (c.contacts().unsubscribe("c_1", true, None)).map(Returned::value)
-        }),
-        ("contacts", "journey", |c| {
-            (c.contacts().journey("c_1", &Query::new())).map(Returned::page)
-        }),
-        // -- conversations ------------------------------------------------
-        ("conversations", "list", |c| {
-            (c.conversations().list(&Query::new())).map(Returned::page)
-        }),
-        ("conversations", "get", |c| {
-            (c.conversations().get("v_1")).map(Returned::value)
-        }),
-        ("conversations", "messages", |c| {
-            (c.conversations().messages("v_1", &Query::new())).map(Returned::page)
-        }),
-        ("conversations", "send", |c| {
-            (c.conversations().send("v_1", &json!({ "body": "hi" }))).map(Returned::value)
-        }),
-        ("conversations", "unattended", |c| {
-            (c.conversations().unattended(&Query::new())).map(Returned::value)
-        }),
-        ("conversations", "agent_handling", |c| {
-            (c.conversations().agent_handling("v_1")).map(Returned::value)
-        }),
-        ("conversations", "set_agent_handling", |c| {
-            (c.conversations()
-                .set_agent_handling("v_1", &json!({ "state": "handled" })))
-            .map(Returned::value)
-        }),
-        ("conversations", "generated_replies", |c| {
-            (c.conversations().generated_replies("v_1", &Query::new())).map(Returned::value)
-        }),
-        ("conversations", "generate_reply", |c| {
-            (c.conversations()
-                .generate_reply("v_1", &json!({ "body": "draft" })))
-            .map(Returned::value)
-        }),
-        ("conversations", "scheduled_messages", |c| {
-            (c.conversations().scheduled_messages("v_1", &Query::new())).map(Returned::value)
-        }),
-        ("conversations", "schedule_message", |c| {
-            (c.conversations().schedule_message(
-                "v_1",
-                &json!({ "body": "later", "sendAt": "2026-10-13T09:00:00Z" }),
-            ))
-            .map(Returned::value)
-        }),
-        ("conversations", "cancel_scheduled", |c| {
-            (c.conversations().cancel_scheduled("s_1")).map(Returned::value)
-        }),
-        // -- tickets ------------------------------------------------------
-        ("tickets", "list", |c| {
-            (c.tickets().list(&Query::new())).map(Returned::page)
-        }),
-        ("tickets", "comments", |c| {
-            (c.tickets().comments("t_1", &Query::new())).map(Returned::value)
-        }),
-        ("tickets", "for_conversation", |c| {
-            (c.tickets().for_conversation("v_1")).map(Returned::value)
-        }),
-        ("tickets", "queues", |c| {
-            (c.tickets().queues(&Query::new())).map(Returned::value)
-        }),
-        ("tickets", "merge", |c| {
-            (c.tickets().merge("t_1", &json!({ "loserId": "t_2" }))).map(Returned::value)
-        }),
-        ("tickets", "split", |c| {
-            (c.tickets().split("t_1", &json!({ "title": "split" }))).map(Returned::value)
-        }),
-        ("tickets", "bulk", |c| {
-            (c.tickets()
-                .bulk(&json!({ "ids": ["t_1"], "action": "status" })))
-            .map(Returned::value)
-        }),
-        // -- macros -------------------------------------------------------
-        ("macros", "list", |c| {
-            (c.macros().list(&Query::new())).map(Returned::value)
-        }),
-        ("macros", "create", |c| {
-            (c.macros()
-                .create(&json!({ "name": "m", "scope": "workspace" })))
-            .map(Returned::value)
-        }),
-        ("macros", "update", |c| {
-            (c.macros().update("m_1", &json!({ "name": "m2" }))).map(Returned::value)
-        }),
-        ("macros", "delete", |c| {
-            (c.macros().delete("m_1")).map(Returned::value)
-        }),
-        // -- kb -----------------------------------------------------------
-        ("kb", "articles", |c| {
-            (c.kb().articles(&Query::new())).map(Returned::page)
-        }),
-        ("kb", "article", |c| {
-            (c.kb().article("how-to")).map(Returned::value)
-        }),
-        ("kb", "collections", |c| {
-            (c.kb().collections(&Query::new())).map(Returned::value)
-        }),
-        // -- search -------------------------------------------------------
-        ("search", "query", |c| {
-            (c.search().query("refund", &Query::new())).map(Returned::value)
-        }),
-        // -- events -------------------------------------------------------
-        ("events", "track", |c| {
-            (c.events()
-                .track(&json!({ "contactId": "c_1", "name": "evt" })))
-            .map(Returned::value)
-        }),
-        ("events", "list", |c| {
-            (c.events().list(&Query::new())).map(Returned::page)
-        }),
-        // -- webhooks -----------------------------------------------------
-        ("webhooks", "deliveries", |c| {
-            (c.webhooks().deliveries(&Query::new())).map(Returned::page)
-        }),
-        ("webhooks", "delivery", |c| {
-            (c.webhooks().delivery("d_1")).map(Returned::value)
-        }),
-        ("webhooks", "redeliver", |c| {
-            (c.webhooks().redeliver("d_1")).map(Returned::value)
-        }),
-        // -- reports ------------------------------------------------------
-        ("reports", "overview", |c| {
-            (c.reports().overview(&Query::new())).map(Returned::value)
-        }),
-        ("reports", "agents", |c| {
-            (c.reports().agents(&Query::new())).map(Returned::value)
-        }),
-        ("reports", "conversations_by_day", |c| {
-            (c.reports().conversations_by_day(&Query::new())).map(Returned::value)
-        }),
-        ("reports", "sla", |c| {
-            (c.reports().sla(&Query::new())).map(Returned::value)
-        }),
-        // -- channels -----------------------------------------------------
-        ("channels", "list", |c| {
-            (c.channels().list(&Query::new())).map(Returned::value)
-        }),
-        ("channels", "get", |c| {
-            (c.channels().get("ch_1")).map(Returned::value)
-        }),
-        // -- billing ------------------------------------------------------
-        ("billing", "plans", |c| {
-            (c.billing().plans(&Query::new())).map(Returned::value)
-        }),
-        ("billing", "usage", |c| {
-            (c.billing().usage("ai.tokens", &Query::new())).map(Returned::value)
-        }),
-        // -- workspace ----------------------------------------------------
-        ("workspace", "settings", |c| {
-            (c.workspace().settings()).map(Returned::value)
-        }),
-        ("workspace", "labels", |c| {
-            (c.workspace().labels(&Query::new())).map(Returned::value)
-        }),
-        ("workspace", "inboxes", |c| {
-            (c.workspace().inboxes(&Query::new())).map(Returned::value)
-        }),
-        ("workspace", "team_members", |c| {
-            (c.workspace().team_members("tm_1", &Query::new())).map(Returned::value)
-        }),
-        ("workspace", "agent_skills", |c| {
-            (c.workspace().agent_skills(&Query::new())).map(Returned::value)
-        }),
-    ]
 }
 
 /// Invoke one method against a fake answering with **that route's own
@@ -405,7 +190,7 @@ fn the_surface_lock_is_regenerated_and_matches_the_manifest() {
 
     let table = invocations();
 
-    // 1. The table and the manifest must name the same 55 methods. Checked
+    // 1. The table and the manifest must name the same 162 methods. Checked
     //    both ways, so neither a new manifest entry nor a stale closure can
     //    slip through.
     let manifest_keys: BTreeMap<(String, String), &ManifestEntry> = manifest
@@ -521,11 +306,14 @@ fn the_surface_lock_is_regenerated_and_matches_the_manifest() {
     //     entries, every check above still passes and the auto-paginator is
     //     no longer exercised by any of them.
     //
-    //     Ten, and it was 7 here until 2026-10-12. Not because the surface
-    //     grew: `contacts.journey`, `conversations.unattended` and
-    //     `search.query` always answered pages and the manifest had simply
-    //     never flagged them, so a floor set from the flags was three short
-    //     of the truth. Raise this when a genuinely paginated route is
+    //     Thirteen. It was 7, then 10, and both earlier numbers were short of
+    //     the truth rather than out of date: `contacts.journey`,
+    //     `conversations.unattended` and `search.query` always answered pages
+    //     and the manifest had simply never flagged them, and `bots.list`,
+    //     `bots.deliveries` and `triggers.list` were the same story when the
+    //     remaining 104 routes were implemented on 2026-10-14 — all three end
+    //     in `buildPaginatedResponse`. A floor set from the flags is only ever
+    //     as good as the flags. Raise this when a genuinely paginated route is
     //     added; do not lower it to make a failing parse go away.
     let paged_count = manifest
         .entries
@@ -533,10 +321,24 @@ fn the_surface_lock_is_regenerated_and_matches_the_manifest() {
         .filter(|e| e.paged == Some(true))
         .count();
     assert!(
-        paged_count >= 10,
-        "only {paged_count} paged manifest entries; expected at least 10. \
+        paged_count >= 13,
+        "only {paged_count} paged manifest entries; expected at least 13. \
          If the manifest really lost one, say which and why; if it did not, \
          the `paged` flag has stopped parsing."
+    );
+
+    // 2d. And a floor on the surface itself, for the same reason: every
+    //     assertion above is satisfied by a manifest that parsed to three
+    //     rows. 162 is the whole surface as of 2026-10-14 — it was 159 for
+    //     part of that day, and `root.me`, `webhooks.delete` and
+    //     `workspace.mine` landed in the manifest while this SDK was being
+    //     finished.
+    assert!(
+        manifest.entries.len() >= 162,
+        "the manifest parsed to {} entries; expected at least 159. Either rows \
+         stopped parsing or the surface shrank on purpose — if the latter, \
+         lower this floor in the same commit and say why.",
+        manifest.entries.len()
     );
 
     // 3. Sorted by ns then name. `table_keys` is a BTreeMap, so `observed`

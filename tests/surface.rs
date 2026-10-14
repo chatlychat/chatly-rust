@@ -1,5 +1,24 @@
-//! Every one of the 55 methods in `packages/sdk-spec/surface.json`, called
-//! once against a mock, asserting the HTTP verb and the path it produced.
+//! Hand-written verb-and-path assertions: every method of the original 55,
+//! plus the routes among the other 104 whose paths invite a specific
+//! mistake.
+//!
+//! ## Why this file is not all 159
+//!
+//! `tests/surface_lock.rs` drives **every** method in the manifest and
+//! compares the verb and path it issued against the manifest's own, route by
+//! route, failing on any difference. That is strictly stronger than
+//! restating a path here, and restating one is how a hand-written expectation
+//! drifts: a sweep of this suite once left `/v1/macros` claiming `Page` while
+//! the shape table said `Array`, and only a one-off script caught it.
+//!
+//! So this file earns its place twice over and no more. The original 55 stay
+//! because a second, independently typed copy of a path is worth having on
+//! the surface people call most. The 104 added on 2026-10-14 appear here only
+//! where the path is one a reasonable author gets wrong —
+//! `/v1/ai-providers/{provider}/test` rather than `/v1/ai/providers/…`,
+//! `/v1/channels/{id}/secret/rotate` rather than `/rotate-secret`,
+//! `/v1/tickets/open-count/{conversationId}` with the literal segment
+//! FIRST — and the lock covers the rest.
 //!
 //! Request *bodies*, query encoding and the escape hatch are in
 //! `tests/bodies.rs` — split off to stay under the contract's 650-line
@@ -17,48 +36,33 @@
 
 mod common;
 
-use chatly::{ChatlyClient, Query};
-use common::{client, shape_for, BodyShape, MockTransport};
+use chatly::Query;
+use common::{client, expect, shape_for, BodyShape, MockTransport, BASE};
 use serde_json::json;
-use std::sync::Arc;
 
-const BASE: &str = "https://api.chatlychat.com";
-
-/// Run `call`, then assert the single request it made.
-fn expect<T>(
-    shape: BodyShape,
-    call: impl FnOnce(&ChatlyClient) -> T,
-    method: &str,
-    path: &str,
-) -> Arc<MockTransport> {
-    let mock = MockTransport::new();
-    mock.push_json(200, shape.body());
-    let chatly = client(&mock);
-    let _ = call(&chatly);
-    let request = mock.only_request();
-    assert_eq!(request.method, method, "verb for {path}");
-    assert_eq!(request.url, format!("{BASE}{path}"), "path for {path}");
-    mock
-}
-
-// Response shapes, per route. `tests/common/mod.rs` holds the authoritative
-// table for all 55 and `tests/surface_lock.rs` enforces it; these aliases
+// Response shapes, per route. `tests/common/shapes.rs` holds the
+// authoritative table for all 159 and `tests/surface_lock.rs` enforces it;
+// these aliases
 // just keep the call sites below readable. This file's assertions are about
 // the verb and the path, so the shape does not change their outcome — but a
 // wrong one here would still be a false claim about the API, and that is how
 // `macros.list` got mis-typed in the first place.
 /// A cursor page. Includes three routes the manifest does not mark `paged`.
 const PAGE: BodyShape = BodyShape::Page;
-/// A bare JSON array. Fourteen routes do this.
+/// A bare JSON array. Thirty-two routes do this.
 const ARRAY: BodyShape = BodyShape::Array;
 /// One entity, a report, a settings blob, or a write's result.
 const OBJ: BodyShape = BodyShape::Object;
-/// `204 No Content` — only `DELETE /v1/macros/{id}`.
+/// `204 No Content` — only `DELETE /v1/macros/{id}`, out of seven DELETEs.
 const EMPTY: BodyShape = BodyShape::Empty;
 
 #[test]
-fn root_whoami() {
+fn root_whoami_and_me() {
     expect(OBJ, |c| c.whoami(), "GET", "/v1/api-keys/whoami");
+    // Two routes, one answer for a key — and `/v1/me` is the looser of the
+    // two (no `@RequirePermission` at all), so it is the liveness check.
+    // Neither path contains the other, which is the mistake to rule out.
+    expect(OBJ, |c| c.me(), "GET", "/v1/me");
 }
 
 #[test]

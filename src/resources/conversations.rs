@@ -93,6 +93,13 @@ impl<'a> Conversations<'a> {
         Self { client }
     }
 
+    /// The client behind this namespace, for the second `impl` block in
+    /// `conversations_ext.rs` — the field itself stays private to this
+    /// module.
+    pub(crate) fn client(&self) -> &'a ChatlyClient {
+        self.client
+    }
+
     /// `GET /v1/conversations` — one page.
     ///
     /// # Errors

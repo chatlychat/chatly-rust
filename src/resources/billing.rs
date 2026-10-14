@@ -110,6 +110,100 @@ impl<'a> Billing<'a> {
     ) -> Result<Value, ChatlyError> {
         self.usage(event_type, &Query::new().set("from", from).set("to", to))
     }
+
+    /// `GET /v1/billing` — the subscription summary: plan, status, seats,
+    /// period, balance.
+    ///
+    /// The path is the bare collection, with no `/summary` segment, which is
+    /// why this method is not called `get`.
+    ///
+    /// Two fields read oddly and are right: **`seatsLimit` of `-1` means
+    /// uncapped**, which is every plan today, and `seatsRemaining` uses the
+    /// same convention. A client that renders `-1` as a number shows a
+    /// customer "-1 seats remaining".
+    ///
+    /// Reachable on a **suspended** workspace, unlike most of this API:
+    /// billing is how a workspace suspended for non-payment gets
+    /// un-suspended.
+    ///
+    /// # Errors
+    ///
+    /// Any [`ChatlyError`].
+    pub fn summary(&self, query: &Query) -> Result<Value, ChatlyError> {
+        self.client.get("/v1/billing", query)
+    }
+
+    /// `GET /v1/billing/invoices` — invoices, newest first.
+    ///
+    /// **Cursor-paginated, and deliberately without a pager here.** It takes
+    /// `cursor` and `limit`, but its envelope key is **`data`**, not
+    /// `items` — so it is not the `{ items, nextCursor }` shape
+    /// [`crate::Page`] decodes, and wrapping it in one would mean a decoder
+    /// that reads a different route's shape. Walk it yourself:
+    /// `out["data"]`, then pass the envelope's cursor back as `cursor`.
+    ///
+    /// `invoicePdfUrl` and `hostedInvoiceUrl` are both nullable: a draft or
+    /// a voided invoice has neither.
+    ///
+    /// # Errors
+    ///
+    /// Any [`ChatlyError`].
+    pub fn invoices(&self, query: &Query) -> Result<Value, ChatlyError> {
+        self.client.get("/v1/billing/invoices", query)
+    }
+
+    /// `GET /v1/billing/usage/monthly` — one month, **all four event
+    /// types**.
+    ///
+    /// The rollup [`Billing::usage`] is not: that route takes a required
+    /// `eventType` and reports one, this one always reports every type in
+    /// [`USAGE_EVENT_TYPES`] plus a `total` across them. So there is no
+    /// `eventType` parameter here and passing one does nothing.
+    ///
+    /// `month` is **`YYYY-MM`** and nothing else — not an ISO instant. An
+    /// unparseable value is a 400 naming the format rather than a silent
+    /// fallback; omitting it means the current UTC month.
+    ///
+    /// The object carries an `items` array and **no cursor**, so it is not a
+    /// page: `items.len()` is always four.
+    ///
+    /// # Errors
+    ///
+    /// Any [`ChatlyError`]; [`ChatlyError::Validation`] for a `month` that
+    /// is not `YYYY-MM`.
+    pub fn usage_monthly(&self, query: &Query) -> Result<Value, ChatlyError> {
+        self.client.get("/v1/billing/usage/monthly", query)
+    }
+
+    /// `GET /v1/billing/usage/daily` — a **dense** day-by-day series for one
+    /// event type.
+    ///
+    /// `event_type` is required and is an argument for the same reason it is
+    /// on [`Billing::usage`]: the handler validates it against the closed
+    /// list and throws before doing anything else, so a call without it is a
+    /// 400 and never an all-types rollup.
+    ///
+    /// Dense means **one entry per UTC day in `[from, to)`, zeros
+    /// included** — so the length of `days` is the window, not the number of
+    /// days with traffic, and a client should not infer "no usage" from a
+    /// short array. The window defaults to the current calendar month (UTC)
+    /// and is capped at 365 days by the service.
+    ///
+    /// # Errors
+    ///
+    /// Any [`ChatlyError`], plus [`ChatlyError::Config`] if `event_type` is
+    /// empty — refused here rather than sent.
+    pub fn usage_daily(&self, event_type: &str, query: &Query) -> Result<Value, ChatlyError> {
+        if event_type.trim().is_empty() {
+            return Err(ChatlyError::Config(format!(
+                "billing usage/daily: event_type is empty; expected one of {USAGE_EVENT_TYPES:?}"
+            )));
+        }
+        self.client.get(
+            "/v1/billing/usage/daily",
+            &query.clone().set("eventType", event_type),
+        )
+    }
 }
 
 #[cfg(test)]

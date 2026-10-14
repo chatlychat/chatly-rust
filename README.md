@@ -90,30 +90,43 @@ client needs no runtime. From async code, wrap a call in
 ### Which shape comes back
 
 Since everything is a `Value`, you need to know whether to index it or
-iterate it. There are three answers, and they are not guessable from the
-method name:
+iterate it. There are four answers over the 162 routes, and they are not
+guessable from the method name:
 
-| Shape                                                        | Routes                                                                                                                                                                                                                                                                                                                          |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `{ items, nextCursor }` — a `Page`, with `.iter()` available | the 7 paginated routes: `contacts.list`, `conversations.list`, `conversations.messages`, `tickets.list`, `kb.articles`, `events.list`, `webhooks.deliveries`                                                                                                                                                                    |
-| a bare JSON **array**                                        | `macros.list`, `channels.list`, `billing.plans`, `kb.collections`, `tickets.comments`, `tickets.for_conversation`, `tickets.queues`, `conversations.generated_replies`, `conversations.scheduled_messages`, `reports.agents`, `reports.conversations_by_day`, `workspace.labels`, `workspace.inboxes`, `workspace.team_members` |
-| a single object                                              | everything else, including every write                                                                                                                                                                                                                                                                                          |
+| Shape                                                           | Count | Where                                                                                                                                                                                                                                                 |
+| --------------------------------------------------------------- | ----: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{ items, nextCursor }` — a `Page`, with an `.iter()` beside it |    13 | `contacts.list`, `contacts.journey`, `conversations.list`, `conversations.messages`, `conversations.unattended`, `tickets.list`, `kb.articles`, `search.query`, `events.list`, `webhooks.deliveries`, `bots.list`, `bots.deliveries`, `triggers.list` |
+| a bare JSON **array**                                           |    33 | every `@PaginationExempt` list — `macros.list`, `ai.tools`, `ai.tone`, `brands.list`, `channels.list`, `channels.adapters`, `docs_sources.list`, … and two writes: `ai.set_tone` (a PUT) and `docs_sources.discover` (a POST)                         |
+| a single object                                                 |   115 | everything else, including every other write                                                                                                                                                                                                          |
+| no body at all — a real `204`, decoded to `Value::Null`         |     1 | `macros.delete`, and only that one. The other seven DELETEs answer `200` with a body                                                                                                                                                                  |
 
-Three routes answer a page envelope but have no `.iter()` here, because the
-shared manifest does not list them as paginated: `contacts.journey`,
-`conversations.unattended` (which adds a `total` that is **not**
-`items.len()`) and `search.query` (which adds `tier` and `facets`). Walk
-them with `paginate()` if you want to.
+Three traps in that table, each of which has cost somebody an afternoon:
 
-Some paged routes add a `hasMore` sibling. `Page` ignores it, and ignores any
-other extra key, so you can read `next_cursor` and not think about it.
+- **An object that carries `items` is not a page.** `conversations.linked`,
+  `conversations.outcomes`, `tickets.time`, `macros.templates`,
+  `workspace.secrets` and `billing.usage_monthly` all have an `items` array
+  and no cursor. `Page` refuses them, deliberately.
+- **`billing.invoices` is cursor-paginated and is still an object**, because
+  its envelope key is `data` rather than `items`. There is no `.iter()` for
+  it; read `out["data"]` and pass the cursor back yourself.
+- **A DELETE can answer with a body.** `contacts.remove_tag` returns the
+  surviving contact and `conversations.cancel_scheduled` the row it
+  cancelled.
 
-**Only key-accessible routes have methods.** Of the API's ~880 routes, about
-140 accept a `ck_` key; the rest need a signed-in person and answer a key
-with `403`. So there is no `reactions` method (a reaction records _who_
-reacted, and a key is not a person) and no channel configuration. A method
-that always fails is worse than no method, because the failure arrives in
-production inside somebody else's integration.
+Some paged routes add a `hasMore` sibling, `conversations.unattended` adds a
+`total` that is **not** `items.len()`, and `search.query` adds `tier` and
+`facets`. `Page` ignores every extra key, so you can read `next_cursor` and
+not think about it — but call `search().query()` rather than `search().iter()`
+if you want the facets, because the iterator yields hits alone.
+
+**Only key-accessible routes have methods.** Of the API's ~880 routes, the
+ones carrying `@AllowApiKey()` are the surface; the rest need a signed-in
+person and answer a key with `403`. So there is no `reactions` method (a
+reaction records _who_ reacted, and a key is not a person), no contact
+block/unblock, and no `GET /v1/channels/{id}/secret` — read silently versus
+rotate loudly is the line on that one. A method that always fails is worse
+than no method, because the failure arrives in production inside somebody
+else's integration.
 
 ---
 
@@ -387,10 +400,10 @@ failure as a genuine `503` on every attempt.
 
 ## Methods
 
-55 methods, one per entry in the SDK manifest every Chatly SDK shares.
+162 methods, one per entry in the SDK manifest every Chatly SDK shares.
 `surface.lock.json` in this package is generated by `tests/surface_lock.rs`
-_executing_ each one and recording the request it issued, so the table below
-is checked rather than asserted.
+_executing_ each one and recording the request it issued, so the tables below
+are checked rather than asserted.
 
 Every method returns `Result<serde_json::Value, ChatlyError>` unless noted.
 `q: &Query` is the query parameters; pass `&Query::new()` for none.
@@ -400,6 +413,13 @@ Every method returns `Result<serde_json::Value, ChatlyError>` unless noted.
 | Method     | HTTP | Path                  |
 | ---------- | ---- | --------------------- |
 | `whoami()` | GET  | `/v1/api-keys/whoami` |
+| `me()`     | GET  | `/v1/me`              |
+
+Both describe the calling credential and, for a `ck_` key, **return the same
+object** — there is no user behind a key. The difference is the bar: `whoami`
+needs `workspace:read` and `me` needs no permission at all, deliberately, so
+that a key can learn its own scope list without provoking 403s to discover
+it. Use `me()` as a liveness check; both answer on a suspended workspace.
 
 ### `contacts()`
 
@@ -413,13 +433,21 @@ Every method returns `Result<serde_json::Value, ChatlyError>` unless noted.
 | `add_tags(id, tags)`            | POST   | `/v1/contacts/{id}/tags`        |
 | `remove_tag(id, tag)`           | DELETE | `/v1/contacts/{id}/tags/{tag}`  |
 | `unsubscribe(id, flag, reason)` | POST   | `/v1/contacts/{id}/unsubscribe` |
-| `journey(id, q)`                | GET    | `/v1/contacts/{id}/journey`     |
+| `journey(id, q)` → `Page`       | GET    | `/v1/contacts/{id}/journey`     |
+| `mood(id, q)`                   | GET    | `/v1/contacts/{id}/mood`        |
+| `cards(contact_id, body)`       | POST   | `/v1/contacts/{id}/cards`       |
 
 `ContactInput` builds an upsert body (`external_id` is the upsert key;
 without it you create a new contact every time). `bulk_upsert` takes
 `BulkContactsInput`, 1–5,000 at a time. The tags route accepts **one tag per
 request**, so `add_tags` issues one request per tag and is not atomic;
 `add_tag` sends a single one.
+
+`mood` takes `days` 7–365 (default 90) and answers `buckets: []` with a low
+`sampleCount` when there is not enough signal — an empty state, not an error.
+`cards` is a POST for a read: it pulls each configured card live from **your**
+backend, so its latency is yours, and each entry's `state` is what tells an
+empty card from a broken one (`blocks: null` is a real value).
 
 ### `conversations()`
 
@@ -437,12 +465,27 @@ request**, so `add_tags` issues one request per tag and is not atomic;
 | `scheduled_messages(id, q)`      | GET    | `/v1/conversations/{id}/scheduled-messages`           |
 | `schedule_message(id, body)`     | POST   | `/v1/conversations/{id}/scheduled-messages`           |
 | `cancel_scheduled(scheduled_id)` | DELETE | `/v1/conversations/scheduled-messages/{scheduled_id}` |
+| `linked(id, q)`                  | GET    | `/v1/conversations/{id}/linked`                       |
+| `outcomes(id, q)`                | GET    | `/v1/conversations/{id}/outcomes`                     |
+| `record_outcome(id, body)`       | POST   | `/v1/conversations/{id}/outcomes`                     |
+| `return_to_bot(id, body)`        | POST   | `/v1/conversations/{id}/return-to-bot`                |
+| `update_blocks(id, msg, body)`   | PATCH  | `/v1/conversations/{id}/messages/{id}/blocks`         |
+| `unread_counts(q)`               | GET    | `/v1/conversations/unread-counts`                     |
 
 `MessageInput::text(id, body)` and `::note(id, body)` build a send body; a
 note is visible to agents and not to the contact. `cancel_scheduled` is keyed
 on the scheduled-message id alone — there is no conversation id in that path.
 `set_agent_handling` additionally requires a **machine-user** key; an ordinary
 workspace key gets `Permission` from it.
+
+`record_outcome`, `outcomes` and `update_blocks` each declare one permission
+and then narrow by the caller's _conversation read scope_, which is
+`conversations:read` and nothing else. A key without it gets **404 on a
+conversation that plainly exists** rather than a 403 — if a thread you can
+read through `get()` 404s on one of these three, check the scope list before
+the id. `return_to_bot` needs `conversations:assign` and `botId` is required
+(`return_to_bot_id(id, bot_id)` builds that body); `unread_counts` is per-USER
+state and therefore always empty for a key — use `unattended` instead.
 
 ### `tickets()`
 
@@ -455,23 +498,43 @@ workspace key gets `Permission` from it.
 | `merge(id, body)`                   | POST | `/v1/tickets/{id}/merge`                         |
 | `split(id, body)`                   | POST | `/v1/tickets/{id}/split`                         |
 | `bulk(body)`                        | POST | `/v1/tickets/bulk`                               |
+| `conversations(id, q)`              | GET  | `/v1/tickets/{id}/conversations`                 |
+| `status_history(id, q)`             | GET  | `/v1/tickets/{id}/status-history`                |
+| `lineage(id, q)`                    | GET  | `/v1/tickets/{id}/lineage`                       |
+| `time(id, q)`                       | GET  | `/v1/tickets/{id}/time`                          |
+| `open_count(conversation_id)`       | GET  | `/v1/tickets/open-count/{conversation_id}`       |
 
 The merge body is `{"loserId": …}` here and `{"mergedId": …}` on contacts —
 the API's naming, not a typo. `merge_loser(id, loser_id)` builds it.
 
+`open_count` puts its literal segment **before** the id and takes a
+_conversation_ id, not a ticket's. `status_history` caps at 500 transitions
+and `truncated` is the only sign of it; `time` answers `{ items,
+totalMinutes, billableMinutes }` with no cursor, so it is not a page.
+
 ### `macros()`
 
-| Method                | HTTP   | Path              |
-| --------------------- | ------ | ----------------- |
-| `list(q)` → **array** | GET    | `/v1/macros`      |
-| `create(body)`        | POST   | `/v1/macros`      |
-| `update(id, body)`    | PATCH  | `/v1/macros/{id}` |
-| `delete(id)`          | DELETE | `/v1/macros/{id}` |
+| Method                | HTTP   | Path                          |
+| --------------------- | ------ | ----------------------------- |
+| `list(q)` → **array** | GET    | `/v1/macros`                  |
+| `create(body)`        | POST   | `/v1/macros`                  |
+| `update(id, body)`    | PATCH  | `/v1/macros/{id}`             |
+| `delete(id)`          | DELETE | `/v1/macros/{id}`             |
+| `get(id)`             | GET    | `/v1/macros/{id}`             |
+| `actions(q)`          | GET    | `/v1/macros/actions`          |
+| `templates(q)`        | GET    | `/v1/macros/templates`        |
+| `template(slug)`      | GET    | `/v1/macros/templates/{slug}` |
 
 `list` is the one list route in this SDK that is **not** cursor-paginated.
 The handler is pagination-exempt: it answers a bare JSON array, capped at
 `MACRO_LIBRARY_CAP` (200) rows and ordered by usage rank. So there is no
 `Page` and no `.iter()` here — narrow with `filter[]` if 200 is not enough.
+
+`delete` is the **only real 204** on this whole surface. `actions` answers
+`{ limit, actions }` — eleven action kinds, sixteen per macro, two different
+numbers. `templates` answers `{ items, total }` over a frozen catalogue, and
+_installing_ a template is not key-accessible: read it and build the macro
+with `create`.
 
 ### `kb()`
 
@@ -512,71 +575,304 @@ needs the `contacts:write:events` scope, which is narrower than
 
 ### `webhooks()`
 
-| Method                   | HTTP | Path                                     |
-| ------------------------ | ---- | ---------------------------------------- |
-| `deliveries(q)` → `Page` | GET  | `/v1/webhooks/deliveries`                |
-| `delivery(id)`           | GET  | `/v1/webhooks/deliveries/{id}`           |
-| `redeliver(id)`          | POST | `/v1/webhooks/deliveries/{id}/redeliver` |
+| Method                         | HTTP  | Path                                     |
+| ------------------------------ | ----- | ---------------------------------------- |
+| `deliveries(q)` → `Page`       | GET   | `/v1/webhooks/deliveries`                |
+| `delivery(id)`                 | GET   | `/v1/webhooks/deliveries/{id}`           |
+| `redeliver(id)`                | POST  | `/v1/webhooks/deliveries/{id}/redeliver` |
+| `list(q)` → **array**          | GET   | `/v1/webhooks`                           |
+| `events(q)`                    | GET   | `/v1/webhooks/events`                    |
+| `create(body)`                 | POST  | `/v1/webhooks`                           |
+| `schema_versions(q)`           | GET   | `/v1/webhooks/schema-versions`           |
+| `set_schema_version(id, body)` | PATCH | `/v1/webhooks/{id}/schema-version`       |
 
-This namespace inspects deliveries. _Verifying_ one is
-`verify_webhook_signature`, which needs no client.
+`create` is the only response that carries the endpoint `secret` — there is
+no reveal route and no rotation route, so losing it means deleting the
+endpoint and creating another. Build your event list from `events()` rather
+than hard-coding one: the dashboard's picker and the API's validation were
+separately hard-coded once and the picker offered three events the platform
+does not emit. After `set_schema_version`, read `missingEventTypes`: a 200
+can still mean some of your events are not described by the version you just
+pinned.
+
+`delete` answers `{ "ok": true }` with a 200. It was closed to keys for a
+while, which was the worst of the three options: a key could create a
+subscription and never remove one, so a deploy pipeline registering an
+endpoint per environment leaked one into the customer's workspace on every
+run. Note the two resources on overlapping prefixes — an endpoint is
+`/v1/webhooks/{id}` and a delivery is `/v1/webhooks/deliveries/{id}` — so a
+delete aimed at the wrong one hits a path that exists.
+
+_Verifying_ a delivery is `verify_webhook_signature`, which needs no client.
 
 ### `reports()`
 
-| Method                    | HTTP | Path                               |
-| ------------------------- | ---- | ---------------------------------- |
-| `overview(q)`             | GET  | `/v1/reports/overview`             |
-| `agents(q)`               | GET  | `/v1/reports/agents`               |
-| `conversations_by_day(q)` | GET  | `/v1/reports/conversations-by-day` |
-| `sla(q)`                  | GET  | `/v1/reports/sla`                  |
+| Method                       | HTTP | Path                                    |
+| ---------------------------- | ---- | --------------------------------------- |
+| `overview(q)`                | GET  | `/v1/reports/overview`                  |
+| `agents(q)`                  | GET  | `/v1/reports/agents`                    |
+| `conversations_by_day(q)`    | GET  | `/v1/reports/conversations-by-day`      |
+| `sla(q)`                     | GET  | `/v1/reports/sla`                       |
+| `sources(q)` → **array**     | GET  | `/v1/reports/sources`                   |
+| `attribution(q)` → **array** | GET  | `/v1/reports/attribution`               |
+| `cohorts(q)`                 | GET  | `/v1/reports/cohorts`                   |
+| `response_times(q)`          | GET  | `/v1/reports/response-times`            |
+| `teams(q)`                   | GET  | `/v1/reports/teams`                     |
+| `labels(q)`                  | GET  | `/v1/reports/labels`                    |
+| `voice(q)`                   | GET  | `/v1/reports/voice`                     |
+| `themes(q)`                  | GET  | `/v1/reports/themes`                    |
+| `theme_conversations(id, q)` | GET  | `/v1/reports/themes/{id}/conversations` |
 
 The first three take `days` only (1–90; default 7, 7 and **14**) and clamp an
 out-of-range value silently. `sla` takes `days`, `from`/`to` (together, or a
 `400`) and `group_by`, and rejects rather than clamps. `sla_range(from, to,
 group_by)` builds that query.
 
+No two of these share a parameter vocabulary, and nothing complains about a
+parameter a route ignores. `cohorts` takes `weeks` (2–26) and **echoes the
+window it used**, which can differ from the one you asked for. `voice` allows
+`days` up to **365** where everything else stops at 90, reports rates as
+0–1, and its `recordingStorage.exact: false` means the byte count is part
+extrapolation. `teams` and `labels` take `from`/`to` plus `business_hours`
+(snake_case), and `businessHours.applied: false` means the durations are
+calendar time — the numbers are never relabelled, so read the flag before
+captioning them. `attribution` **refuses** an unknown `dimension`
+(`ATTRIBUTION_DIMENSIONS`) rather than defaulting, and its `value: null` row
+is the untagged bucket: drop it and every other `percentage` inflates.
+`themes` wants `date` as `YYYY-MM-DD` and 400s on anything else, and
+`theme_conversations` answers `200` with an empty list for an unknown theme
+rather than a 404.
+
 ### `channels()`, `billing()`, `workspace()`
 
-| Method                                 | HTTP | Path                     |
-| -------------------------------------- | ---- | ------------------------ |
-| `channels().list(q)`                   | GET  | `/v1/channels`           |
-| `channels().get(id)`                   | GET  | `/v1/channels/{id}`      |
-| `billing().plans(q)`                   | GET  | `/v1/billing/plans`      |
-| `billing().usage(event_type, q)`       | GET  | `/v1/billing/usage`      |
-| `workspace().settings()`               | GET  | `/v1/workspace/settings` |
-| `workspace().labels(q)`                | GET  | `/v1/labels`             |
-| `workspace().inboxes(q)`               | GET  | `/v1/inboxes`            |
-| `workspace().team_members(team_id, q)` | GET  | `/v1/teams/{id}/members` |
-| `workspace().agent_skills(q)`          | GET  | `/v1/agents/skills`      |
+| Method                                             | HTTP  | Path                              |
+| -------------------------------------------------- | ----- | --------------------------------- |
+| `channels().list(q)` → **array**                   | GET   | `/v1/channels`                    |
+| `channels().get(id)`                               | GET   | `/v1/channels/{id}`               |
+| `channels().adapters(q)` → **array**               | GET   | `/v1/channels/adapters`           |
+| `channels().create(body)`                          | POST  | `/v1/channels`                    |
+| `channels().update(id, body)`                      | PATCH | `/v1/channels/{id}`               |
+| `channels().rotate_secret(id)`                     | POST  | `/v1/channels/{id}/secret/rotate` |
+| `billing().summary(q)`                             | GET   | `/v1/billing`                     |
+| `billing().plans(q)` → **array**                   | GET   | `/v1/billing/plans`               |
+| `billing().usage(event_type, q)`                   | GET   | `/v1/billing/usage`               |
+| `billing().usage_monthly(q)`                       | GET   | `/v1/billing/usage/monthly`       |
+| `billing().usage_daily(event_type, q)`             | GET   | `/v1/billing/usage/daily`         |
+| `billing().invoices(q)`                            | GET   | `/v1/billing/invoices`            |
+| `workspace().settings()`                           | GET   | `/v1/workspace/settings`          |
+| `workspace().labels(q)` → **array**                | GET   | `/v1/labels`                      |
+| `workspace().inboxes(q)` → **array**               | GET   | `/v1/inboxes`                     |
+| `workspace().team_members(team_id, q)` → **array** | GET   | `/v1/teams/{id}/members`          |
+| `workspace().agent_skills(q)`                      | GET   | `/v1/agents/skills`               |
+| `workspace().key_scopes(q)` → **array**            | GET   | `/v1/api-keys/scopes`             |
+| `workspace().secrets(q)`                           | GET   | `/v1/workspace/secrets`           |
 
-All read-only: every write on these surfaces needs a signed-in person.
+`billing().usage` and `usage_daily` take the **event type as an argument, not
+a query parameter**, because the handler validates it against a closed list
+and throws first — a call without it is a `400`, never an all-types rollup.
+`usage_monthly` is the opposite: it always reports all four types plus a
+total, takes `month` as `YYYY-MM` only, and ignores an `eventType`.
+`USAGE_EVENT_TYPES` lists what the server accepts today;
+`usage_range(event_type, from, to)` sets the window, which otherwise defaults
+to the current UTC month. `usage_daily` is **dense** — one entry per UTC day
+in the window, zeros included — so a long `days` array is the window and not
+the traffic. `summary` reports `seatsLimit: -1` for uncapped, which is every
+plan today.
 
-`billing().usage` takes the **event type as an argument, not a query
-parameter**, because the handler validates it against a closed list and
-throws first — a call without it is a `400`, never an all-types rollup.
-`USAGE_EVENT_TYPES` lists what the server accepts today
-(`conversation.opened`, `message.sent.agent`, `message.sent.bot`,
-`ai.tokens`); `usage_range(event_type, from, to)` sets the window, which
-otherwise defaults to the current UTC month.
+`channels().rotate_secret` works on a **custom (`api`) channel only** and
+answers `409` for any other type; it is a hard cut with no grace window.
+`channels().update` merges `config` by RFC 7396 unless you send
+`configMode: "replace"`, and an empty patch is a `409`. There is still no
+`channels().delete` and no way to read a channel secret back:
+`GET /v1/channels/{id}/secret` is the one channel route deliberately closed
+to keys.
 
-`channels().list`, `workspace().labels`, `workspace().inboxes` and
-`workspace().team_members` all return **bare JSON arrays**. So does
-`billing().plans` — and an empty one is a success there, not an error: it is
-what a deployment with no Stripe configuration returns.
+`workspace().secrets` is the only route on this surface needing **two**
+permissions, `workspace:write` AND `integrations:read`. It reports existence
+and timestamps and never a value — read `rotatedAtBasis` and `lastUsedBasis`
+before acting on a null (they say whether it means _never_ or _nothing
+records it_), and `truncated` before concluding a credential does not exist.
+
+`/v1/workspace` singular and `/v1/workspaces` plural are different resources.
+`workspace().mine` is the plural one — the workspaces the caller can reach —
+and **for a key that array holds exactly one entry**, with a synthetic
+`restricted` role rather than a stored one, because what a key may do is its
+scope set and reporting `owner` would overstate the credential.
+
+### `ai()`
+
+| Method                       | HTTP   | Path                               |
+| ---------------------------- | ------ | ---------------------------------- |
+| `providers(q)`               | GET    | `/v1/ai-providers`                 |
+| `add_provider(body)`         | POST   | `/v1/ai-providers`                 |
+| `test_provider(provider)`    | POST   | `/v1/ai-providers/{provider}/test` |
+| `quota(q)`                   | GET    | `/v1/ai/quota`                     |
+| `tone(q)` → **array**        | GET    | `/v1/ai/tone`                      |
+| `set_tone(body)` → **array** | PUT    | `/v1/ai/tone`                      |
+| `tone_preview(q)`            | GET    | `/v1/ai/tone/preview`              |
+| `generate_tone(body)`        | POST   | `/v1/ai/tone/generate`             |
+| `tools(q)` → **array**       | GET    | `/v1/ai/tools`                     |
+| `create_tool(body)`          | POST   | `/v1/ai/tools`                     |
+| `update_tool(id, body)`      | PATCH  | `/v1/ai/tools/{id}`                |
+| `delete_tool(id)`            | DELETE | `/v1/ai/tools/{id}`                |
+
+`/v1/ai-providers` is a **sibling** of `/v1/ai`, not a child of it:
+`/v1/ai/providers` is unmapped. `add_provider` calls the vendor before
+storing the key, so it is slow and only an authentication-class _answer_
+refuses the save — read `validation.status` rather than trusting the 201.
+No response here ever carries a key. `set_tone` is a PUT that replaces the
+whole rule set and answers the same bare array the GET does. `update_tool`
+keeps stored `secretHeaders` when you **omit** the field and clears them when
+you send `{}`, so do not serialise your whole model on every save.
+
+### `bots()`
+
+| Method                       | HTTP  | Path                                      |
+| ---------------------------- | ----- | ----------------------------------------- |
+| `list(q)` → `Page`           | GET   | `/v1/bots`                                |
+| `get(id)`                    | GET   | `/v1/bots/{id}`                           |
+| `create(body)`               | POST  | `/v1/bots`                                |
+| `update(id, body)`           | PATCH | `/v1/bots/{id}`                           |
+| `update_external(id, body)`  | PATCH | `/v1/bots/{id}/external`                  |
+| `rotate_external_secret(id)` | POST  | `/v1/bots/{id}/external/rotate-secret`    |
+| `analytics(id, q)`           | GET   | `/v1/bots/{id}/analytics`                 |
+| `deliveries(id, q)` → `Page` | GET   | `/v1/bots/{id}/deliveries`                |
+| `delivery(id, delivery_id)`  | GET   | `/v1/bots/{id}/deliveries/{delivery_id}`  |
+| `redeliver(id, delivery_id)` | POST  | `/v1/bots/{id}/deliveries/{id}/redeliver` |
+| `test_delivery(id)`          | POST  | `/v1/bots/{id}/test-delivery`             |
+
+`create` takes a **union of two disjoint bodies and neither half is strict**,
+so a field from the wrong one is silently dropped: `type: "external"` plus a
+`systemPrompt` is a 201 and an agent with no prompt. The external arm returns
+a `signingSecret` and a `cb_` token, each shown exactly once.
+`rotate_external_secret` has no overlap window — deploy the new secret
+before calling. A list row omits the signed payload (a page of fifty would be
+megabytes of transcript); `delivery` carries the exact bytes that were
+signed, which is the route to use when your signature check fails.
+`redeliver` resends the **same `eventId`**, so a receiver deduping on it will
+discard a replay it already processed. `test_delivery` writes nothing and
+carries `"test": true` with all-zero UUIDs — acknowledge it and do not reply.
+
+### `triggers()`, `bot_routes()`, `canvas_steps()`
+
+| Method                             | HTTP   | Path                            |
+| ---------------------------------- | ------ | ------------------------------- |
+| `triggers().list(q)` → `Page`      | GET    | `/v1/triggers`                  |
+| `triggers().create(body)`          | POST   | `/v1/triggers`                  |
+| `triggers().delete(id)`            | DELETE | `/v1/triggers/{id}`             |
+| `bot_routes().list(q)` → **array** | GET    | `/v1/bot-routes`                |
+| `bot_routes().fields(q)`           | GET    | `/v1/bot-routes/fields`         |
+| `bot_routes().create(body)`        | POST   | `/v1/bot-routes`                |
+| `bot_routes().update(id, body)`    | PATCH  | `/v1/bot-routes/{id}`           |
+| `bot_routes().delete(id)`          | DELETE | `/v1/bot-routes/{id}`           |
+| `bot_routes().resolve(body)`       | POST   | `/v1/bot-routes/resolve`        |
+| `canvas_steps().get(id)`           | GET    | `/v1/canvas-steps/{id}`         |
+| `canvas_steps().resolve(id, body)` | POST   | `/v1/canvas-steps/{id}/resolve` |
+
+`triggers().create` is an **upsert** keyed on an optional `id` in the body —
+there is no PATCH, so an update is a whole replacement — and it answers `201`
+on both arms. `actions` must hold 1–20 entries; `eventType` is a free string
+validated only for length, matched later by literal equality, so a typo is a
+trigger that is syntactically perfect and never fires.
+
+`bot_routes().list` is in **evaluation order** and that order is the data.
+`resolve` dry-runs the real decision over a hypothetical visitor and returns
+the `event` object the conditions saw, which is where half of every routing
+bug is visible; disabled routes are absent from it by design.
+
+`canvas_steps().resolve` 404s if you call it from inside the request that is
+about to answer `{ pending: true }` — the row is written after we answer the
+visitor — and 409s once the step is spent or ten minutes have passed.
+
+### `brands()`, `customer_cards()`, `customer_card_endpoints()`
+
+| Method                                          | HTTP   | Path                                               |
+| ----------------------------------------------- | ------ | -------------------------------------------------- |
+| `brands().list(q)` → **array**                  | GET    | `/v1/brands`                                       |
+| `brands().create(body)`                         | POST   | `/v1/brands`                                       |
+| `brands().update(id, body)`                     | PATCH  | `/v1/brands/{id}`                                  |
+| `brands().delete(id)`                           | DELETE | `/v1/brands/{id}`                                  |
+| `customer_cards().list(q)` → **array**          | GET    | `/v1/customer-cards`                               |
+| `customer_cards().create(body)`                 | POST   | `/v1/customer-cards`                               |
+| `customer_cards().update(id, body)`             | PATCH  | `/v1/customer-cards/{id}`                          |
+| `customer_cards().rotate_secret(id)`            | POST   | `/v1/customer-cards/{id}/rotate-secret`            |
+| `customer_cards().delete(id)`                   | DELETE | `/v1/customer-cards/{id}`                          |
+| `customer_card_endpoints().list(q)` → **array** | GET    | `/v1/customer-card-endpoints`                      |
+| `customer_card_endpoints().create(body)`        | POST   | `/v1/customer-card-endpoints`                      |
+| `customer_card_endpoints().rotate_secret(id)`   | POST   | `/v1/customer-card-endpoints/{id}/rotate-secret`   |
+| `customer_card_endpoints().activate_secret(id)` | POST   | `/v1/customer-card-endpoints/{id}/activate-secret` |
+| `customer_card_endpoints().delete(id)`          | DELETE | `/v1/customer-card-endpoints/{id}`                 |
+
+`brands().delete` is a `409` if the brand is the workspace default or if
+channels still point at it — both are "fix this first", not failures of the
+call. `isDefault: true` on a create or update **demotes** the current
+default; `icons` is the one field that merges rather than replaces.
+
+The two card resources spell rotation differently and behave differently.
+A **card** rotates in one step with no grace window. An **endpoint** rotates
+in two: `rotate_secret` mints the next secret with `active: false`, the
+current one keeps signing, and `activate_secret` promotes it — so the safe
+sequence is rotate, deploy, activate, and a second `activate_secret` is a
+`409` on purpose. Creating an endpoint changes signing for that URL
+immediately and drops the `x-chatly-card-id` header; deleting one puts both
+back, which is a change at your verifier rather than a cleanup.
+
+### `docs_sources()`, `knowledge_gaps()`, `email_templates()`
+
+| Method                                      | HTTP   | Path                            |
+| ------------------------------------------- | ------ | ------------------------------- |
+| `docs_sources().providers(q)` → **array**   | GET    | `/v1/docs-sources/providers`    |
+| `docs_sources().list(q)` → **array**        | GET    | `/v1/docs-sources`              |
+| `docs_sources().discover(body)` → **array** | POST   | `/v1/docs-sources/discover`     |
+| `docs_sources().create(body)`               | POST   | `/v1/docs-sources`              |
+| `docs_sources().update(id, body)`           | PATCH  | `/v1/docs-sources/{id}`         |
+| `docs_sources().sync(id, body)`             | POST   | `/v1/docs-sources/{id}/sync`    |
+| `docs_sources().webhook(id)`                | POST   | `/v1/docs-sources/{id}/webhook` |
+| `docs_sources().delete(id)`                 | DELETE | `/v1/docs-sources/{id}`         |
+| `knowledge_gaps().list(q)` → **array**      | GET    | `/v1/knowledge-gaps`            |
+| `knowledge_gaps().update(id, body)`         | PATCH  | `/v1/knowledge-gaps/{id}`       |
+| `knowledge_gaps().draft(id)`                | POST   | `/v1/knowledge-gaps/{id}/draft` |
+| `email_templates().list(q)` → **array**     | GET    | `/v1/email-templates`           |
+| `email_templates().preview(body)`           | POST   | `/v1/email-templates/preview`   |
+| `email_templates().update(kind, body)`      | PUT    | `/v1/email-templates/{kind}`    |
+| `email_templates().delete(kind)`            | DELETE | `/v1/email-templates/{kind}`    |
+
+`discover` is a POST answering a bare array; pass `organizationId` when you
+have one, or an org-scoped token fails the whole connect flow and an
+account-wide one returns every space in every organisation. `sync_now(id,
+full)` builds the sync body — send `full: true` whenever the _reader_ changed
+rather than the content, or the run finds nothing new and the knowledge base
+stays as wrong as it was. `webhook` answers `subscribed: false` with a reason
+far more often than not (a read-only token cannot manage webhooks), and that
+is a success. `delete` keeps the articles and reports how many.
+
+`knowledge_gaps().list` **drops** an unrecognised `status` instead of
+refusing it, so a misspelled filter returns everything with a 200; the PATCH
+is strict about the same value. `set_status(id, status)` builds that body.
+`draft` makes a real LLM call, is metered against the workspace's AI spend,
+and its 201 carries either a draft article id **or a reason there is none**.
+
+For email templates the resource is the **kind**, not a row id —
+`EMAIL_TEMPLATE_KINDS` has the five — and `delete` means "restore the
+built-in", answering `{ restored: true | false }` with a 200 rather than the
+template. `preview` lists the tokens you wrote that the kind does not supply,
+which is the reason to call it: at send time they render as nothing and
+nowhere complains.
 
 ### Helpers, and extras beyond the manifest
 
-| Item                                                                                                                                         | What                                                  |
-| -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| `identity_hash(secret, external_id)`                                                                                                         | widget identity digest                                |
-| `verify_webhook_signature(body, header, secret)`                                                                                             | 300 s window                                          |
-| `verify_webhook_signature_with(…, &VerifyOptions)`                                                                                           | custom window or clock                                |
-| `search().kb(q, params)`                                                                                                                     | `/v1/search` narrowed to `kinds=kb`                   |
-| `.iter(q)` on each of the 7 paginated routes                                                                                                 | auto-paginating `Iterator`                            |
-| `iter_messages`, `iter_articles`, `iter_deliveries`                                                                                          | the same, for sub-resources                           |
-| `request`, `request_as`, `paginate`                                                                                                          | the escape hatch                                      |
-| `with_idempotency_key`                                                                                                                       | pin a key across calls                                |
-| `contacts().add_tag`, `tickets().merge_loser`, `conversations().schedule`, `conversations().set_agent_handling_state`, `reports().sla_range` | typed bodies for routes whose shape is a single field |
+| Item                                                                                                                                                                                                                                                                                                 | What                                                              |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `identity_hash(secret, external_id)`                                                                                                                                                                                                                                                                 | widget identity digest                                            |
+| `verify_webhook_signature(body, header, secret)`                                                                                                                                                                                                                                                     | 300 s window                                                      |
+| `verify_webhook_signature_with(…, &VerifyOptions)`                                                                                                                                                                                                                                                   | custom window or clock                                            |
+| `search().kb(q, params)`                                                                                                                                                                                                                                                                             | `/v1/search` narrowed to `kinds=kb`                               |
+| `.iter(q)` on each of the 13 paginated routes                                                                                                                                                                                                                                                        | auto-paginating `Iterator`                                        |
+| `iter_messages`, `iter_journey`, `iter_unattended`, `iter_articles`, `iter_deliveries`                                                                                                                                                                                                               | the same, for sub-resources                                       |
+| `request`, `request_as`, `paginate`                                                                                                                                                                                                                                                                  | the escape hatch                                                  |
+| `with_idempotency_key`                                                                                                                                                                                                                                                                               | pin a key across calls                                            |
+| `contacts().add_tag`, `tickets().merge_loser`, `conversations().schedule`, `conversations().set_agent_handling_state`, `conversations().return_to_bot_id`, `reports().sla_range`, `billing().usage_range`, `docs_sources().sync_now`, `knowledge_gaps().set_status`, `bots().deliveries_with_status` | typed bodies and queries for routes whose shape is a single field |
+| `AI_PROVIDERS`, `ATTRIBUTION_DIMENSIONS`, `CHANNEL_TYPES`, `DELIVERY_STATUSES`, `DOCS_PROVIDERS`, `EMAIL_TEMPLATE_KINDS`, `GAP_STATUSES`, `ROUTE_CONDITION_OPS`, `TRIGGER_CONDITION_OPS`                                                                                                             | the closed vocabularies, for pickers — not for validating input   |
 
 ---
 

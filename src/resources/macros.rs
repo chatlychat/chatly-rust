@@ -130,6 +130,86 @@ impl<'a> Macros<'a> {
             &Query::new(),
         )
     }
+
+    /// `GET /v1/macros/{id}` — one macro, whole.
+    ///
+    /// The id is parsed as a UUID v7 before the query, so a non-UUID is a
+    /// **400** rather than a 404. That is also what keeps the literal
+    /// `actions` and `templates` segments from being swallowed by this
+    /// route.
+    ///
+    /// # Errors
+    ///
+    /// Any [`ChatlyError`]; [`ChatlyError::Validation`] for a malformed id,
+    /// [`ChatlyError::NotFound`] if no such macro.
+    pub fn get(&self, id: &str) -> Result<Value, ChatlyError> {
+        self.client.get(
+            &format!("/v1/macros/{}", encode_path_segment(id)),
+            &Query::new(),
+        )
+    }
+
+    /// `GET /v1/macros/actions` — the action vocabulary, as
+    /// `{ limit, actions }`.
+    ///
+    /// An **object, not an array**, and the envelope is the point: `limit` is
+    /// how many actions one macro may carry — sixteen today — while
+    /// `actions` is the eleven distinct kinds. A picker needs both numbers
+    /// and they are not the same number. [`MACRO_ACTION_KEYS`] is this
+    /// crate's copy of the keys; [`MACRO_LIBRARY_CAP`] is a third number
+    /// again, the size of the library.
+    ///
+    /// Static and tenant-free.
+    ///
+    /// # Errors
+    ///
+    /// Any [`ChatlyError`].
+    pub fn actions(&self, query: &Query) -> Result<Value, ChatlyError> {
+        self.client.get("/v1/macros/actions", query)
+    }
+
+    /// `GET /v1/macros/templates` — the starter catalogue, as
+    /// `{ items, total }`.
+    ///
+    /// An object with an `items` array and **no cursor**: `total` is
+    /// `items.len()` over a frozen in-process catalogue, not a hint at a
+    /// second page. Do not reach for a paginator.
+    ///
+    /// Rows are the *lite* shape — enough to render a chooser. Read one with
+    /// [`Macros::template`] for its body and actions.
+    ///
+    /// # Errors
+    ///
+    /// Any [`ChatlyError`].
+    pub fn templates(&self, query: &Query) -> Result<Value, ChatlyError> {
+        self.client.get("/v1/macros/templates", query)
+    }
+
+    /// `GET /v1/macros/templates/{slug}` — one template, full body.
+    ///
+    /// Addressed by slug. An unknown slug is a **404**, not a 400 — a
+    /// missing member of a collection — which was worth fixing here because
+    /// the route used to validate the slug against an enum first and answer
+    /// 400 instead.
+    ///
+    /// The literal `templates` segment wins over the sibling
+    /// `GET /v1/macros/{id}` because that route's id validator refuses a
+    /// non-UUID, so there is no ambiguity to work around.
+    ///
+    /// Note that *installing* a template is not key-accessible
+    /// (`POST /v1/macros/templates/{slug}/install` needs a signed-in
+    /// person), so this namespace can read the catalogue and not clone from
+    /// it. Build the macro with [`Macros::create`] from what you read here.
+    ///
+    /// # Errors
+    ///
+    /// Any [`ChatlyError`]; [`ChatlyError::NotFound`] for an unknown slug.
+    pub fn template(&self, slug: &str) -> Result<Value, ChatlyError> {
+        self.client.get(
+            &format!("/v1/macros/templates/{}", encode_path_segment(slug)),
+            &Query::new(),
+        )
+    }
 }
 
 #[cfg(test)]

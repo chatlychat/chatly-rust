@@ -296,6 +296,66 @@ impl<'a> Contacts<'a> {
             query,
         )
     }
+
+    /// `GET /v1/contacts/{id}/mood` — weekly sentiment buckets for one
+    /// contact.
+    ///
+    /// `days` is 7–365, default **90** — note the floor: fewer than seven
+    /// days is refused rather than clamped, because a week is the bucket
+    /// width.
+    ///
+    /// **`buckets: []` with a low `sampleCount` is the ordinary
+    /// not-enough-signal answer, not an error.** The series is computed from
+    /// a sentiment cache that only fills for contacts who have said enough,
+    /// so an empty array for a new contact is correct and the dashboard
+    /// renders an empty state from it. Read `sampleCount` before drawing a
+    /// chart.
+    ///
+    /// # Errors
+    ///
+    /// Any [`ChatlyError`]; [`ChatlyError::Validation`] for `days` outside
+    /// 7–365.
+    pub fn mood(&self, id: &str, query: &Query) -> Result<Value, ChatlyError> {
+        self.client.get(
+            &format!("/v1/contacts/{}/mood", encode_path_segment(id)),
+            query,
+        )
+    }
+
+    /// `POST /v1/contacts/{contact_id}/cards` — pull this contact's customer
+    /// cards live from **your** backend.
+    ///
+    /// A POST for a read, and three reasons it has to be: the answer depends
+    /// on a `conversationId` in the body, it is not cacheable by any
+    /// intermediary, and a GET with a conversation id in the query string
+    /// would land in an access log beside the contact's email.
+    ///
+    /// Body: `{ "conversationId"?: "<uuid>" }`, `.strict()`. Omit it for the
+    /// contact-level view.
+    ///
+    /// **This makes outbound HTTP calls to the URLs you configured** (see
+    /// [`crate::CustomerCards`]) while the request is open, one per card, so
+    /// it is the slowest route in this namespace and its latency is your
+    /// backend's. Each entry carries a `state` — `ok`, `empty`, `missing`,
+    /// `invalid` or `error` — and `blocks: null` is a real value meaning "no
+    /// data for this contact", not a failure. **Read `state`, not
+    /// `blocks == null`**, to tell an empty card from a broken one.
+    ///
+    /// Answers **201**, and needs `contacts:read` rather than an
+    /// integrations scope.
+    ///
+    /// # Errors
+    ///
+    /// Any [`ChatlyError`]. A card endpoint of yours that times out does
+    /// **not** fail this call: it comes back as that card's `state`.
+    pub fn cards(&self, contact_id: &str, body: &impl Serialize) -> Result<Value, ChatlyError> {
+        self.client.write(
+            "POST",
+            &format!("/v1/contacts/{}/cards", encode_path_segment(contact_id)),
+            &Query::new(),
+            Some(body),
+        )
+    }
 }
 
 /// The envelope [`Contacts::bulk_upsert`] expects: `{ "contacts": [ … ] }`.
