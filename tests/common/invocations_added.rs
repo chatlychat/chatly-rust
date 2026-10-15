@@ -409,6 +409,14 @@ pub fn added_2026_10_14() -> Vec<(&'static str, &'static str, Invocation)> {
         ("webhooks", "delete", |c| {
             (c.webhooks().delete("wh_1")).map(Returned::value)
         }),
+        // -- visitors (added 2026-10-14, the 163rd route) -----------------
+        //
+        // No body argument, because the route takes none: the contact id is
+        // the whole input. `Returned::value` and not `Returned::page` —
+        // `{ conversationId }` is one object.
+        ("visitors", "start_conversation", |c| {
+            (c.visitors().start_conversation("cont_1")).map(Returned::value)
+        }),
         // -- workspace (added 2026-10-14) ---------------------------------
         ("workspace", "key_scopes", |c| {
             (c.workspace().key_scopes(&Query::new())).map(Returned::value)

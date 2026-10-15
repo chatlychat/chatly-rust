@@ -487,3 +487,84 @@ fn s6_a_paginator_error_ends_the_iteration() {
     ));
     assert_eq!(mock.request_count(), 2, "no further pages after an error");
 }
+
+// ---------------------------------------------------------------------------
+// A route-specific addendum to §10.4, because this surface has a 429 that
+// does NOT look like the one above.
+// ---------------------------------------------------------------------------
+
+/// `visitors().start_conversation`'s own limit sends no `Retry-After`.
+///
+/// `s4_429_raises_rate_limited_with_retry_after_populated` asserts the shape
+/// the throttler produces, and it is right about that. It is not the only
+/// 429 on this surface, and believing it is would be the trap that
+/// `wireError`'s own docstring was written about: a fixture that invents the
+/// server's shape agrees with the bug rather than finding it.
+///
+/// What the API really does for the per-contact outreach limit, read off the
+/// code rather than assumed:
+///
+/// - `consumePerContactOutreachToken` throws `RateLimitedError(ttl)`, which
+///   is an `AppError` with `httpStatus: 429` and
+///   `details: { retryAfterSeconds }`.
+/// - `app-exception.filter.ts` sets no headers at all; it sends
+///   `wireError(err.toJSON())` and nothing else.
+/// - The only thing that synthesises a plain `Retry-After` is a Fastify
+///   `onSend` hook that derives it from the `Retry-After-<bucket>` headers
+///   `@nestjs/throttler` emits. This refusal does not come from the
+///   throttler, so there are no bucket headers and no `Retry-After`.
+///
+/// So `retry_after()` is `None` here, and a caller that treats `None` as "no
+/// delay required" hammers a limit that is closed for the rest of the hour.
+/// The TTL is still recoverable — from the body, which this crate preserves
+/// verbatim on `ApiError::body` precisely so a detail it does not model is
+/// not lost.
+///
+/// `None` is this crate's answer specifically, and it is worth being precise
+/// about why: the missing header belongs to the ROUTE, but whether a client
+/// surfaces the wait regardless belongs to that client's error construction.
+/// `parse_retry_after` here takes a header and nothing else, and neither
+/// `error.rs` nor `client.rs` mentions `details` — so there is no body
+/// fallback to find. The Ruby and Python clients do have one and populate
+/// `retry_after` on this same refusal; Node, Go and PHP do not. That makes
+/// CONTRACT.md §10.4's "a 429 … with `retry_after` populated" true of the
+/// throttler's 429 in every language and language-dependent on this one, and
+/// this test is the record of which side Rust is on. Driven through a real
+/// envelope rather than asserted from the source, because reading the code
+/// is how the wrong half of that gets believed.
+#[test]
+fn the_per_contact_outreach_limit_is_a_429_with_no_retry_after_header() {
+    let mock = MockTransport::new();
+    mock.push_with_headers(
+        429,
+        r#"{"error":{"code":"rate_limited","message":"Too many requests","details":{"retryAfterSeconds":2700}}}"#,
+        &[("x-request-id", "req_outreach")],
+    );
+
+    let err = client(&mock)
+        .visitors()
+        .start_conversation("cont_1")
+        .unwrap_err();
+
+    assert!(err.is_rate_limited(), "{err:?}");
+    assert_eq!(err.status(), Some(429));
+    assert_eq!(err.request_id(), Some("req_outreach"));
+    assert_eq!(
+        err.retry_after(),
+        None,
+        "the per-contact limit sends no Retry-After, and this crate reads the \
+         header only. Two things make this go red and they need opposite \
+         fixes: a fixture that invented a header the API does not set (fix \
+         the fixture), or this crate gaining the Ruby/Python \
+         `details.retryAfterSeconds` fallback (fix this expectation AND the \
+         rustdoc on `Visitors::start_conversation`, which tells callers to \
+         parse the body themselves)"
+    );
+
+    // And the TTL the API did send is not lost: it is in the raw body.
+    let ChatlyError::RateLimited { error, .. } = &err else {
+        panic!("wrong variant: {err:?}");
+    };
+    let body: serde_json::Value = serde_json::from_str(&error.body).expect("the body is JSON");
+    assert_eq!(body["error"]["details"]["retryAfterSeconds"], 2700);
+}

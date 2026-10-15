@@ -6,7 +6,7 @@
 //! whole exercise exists to close:
 //!
 //! 1. **The column could be unanimous.** A table that said `object` for all
-//!    162 routes would satisfy every assertion in the lock suite — each method
+//!    163 routes would satisfy every assertion in the lock suite — each method
 //!    would be fed an object, most of them really do answer objects, and the
 //!    manifest would have to be wrong in the same way for the diff to pass,
 //!    which is exactly the correlated failure the per-SDK column is supposed
@@ -67,7 +67,10 @@ fn declared_counts() -> BTreeMap<&'static str, usize> {
 /// 14 / 10 / 30 / 1 over the first 55 routes on 2026-10-12, and 32 `array`,
 /// 13 `page`, 113 `object`, 1 `empty` over the 159 on 2026-10-14, and
 /// 33 / 13 / 115 / 1 once `root.me`, `webhooks.delete` and `workspace.mine`
-/// joined the manifest later that day. They are
+/// joined the manifest later that day, and 33 / 13 / 116 / 1 once
+/// `visitors.start_conversation` joined it on 2026-10-14 — one more `object`,
+/// read off the service return type because that handler has no
+/// `@ZodResponse`. They are
 /// asserted exactly rather than as floors because the surface is pinned by a
 /// committed lock; when a route is added, this test is one of the places that
 /// must be updated on purpose.
@@ -91,7 +94,7 @@ fn the_declared_shapes_are_distributed_as_the_handlers_are() {
     );
     assert_eq!(
         counts,
-        [("array", 33), ("empty", 1), ("object", 115), ("page", 13)]
+        [("array", 33), ("empty", 1), ("object", 116), ("page", 13)]
             .into_iter()
             .collect::<BTreeMap<&str, usize>>(),
         "the declared shape column changed shape; if a route was added, say \

@@ -47,6 +47,7 @@ mod reports;
 mod search;
 mod tickets;
 mod triggers;
+mod visitors;
 mod webhooks;
 mod workspace;
 
@@ -71,5 +72,6 @@ pub use reports::{Reports, ATTRIBUTION_DIMENSIONS};
 pub use search::{Search, SEARCH_KINDS};
 pub use tickets::{Tickets, TICKET_BULK_ACTIONS};
 pub use triggers::{Triggers, TRIGGER_CONDITION_OPS};
+pub use visitors::Visitors;
 pub use webhooks::Webhooks;
 pub use workspace::Workspace;

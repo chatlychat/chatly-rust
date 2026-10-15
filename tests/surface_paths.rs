@@ -166,6 +166,47 @@ fn secret_rotation_is_spelled_differently_on_each_resource() {
     );
 }
 
+/// Starting a proactive conversation sends the id in the path and nothing
+/// else — no body, no query — and still carries an idempotency key.
+///
+/// Asserted on what the SDK SENT rather than on what the fake answered. A
+/// transport that echoes the request back agrees with any bug in it, which is
+/// how two sibling SDKs shipped a paginator over a bare-array route with
+/// green suites.
+///
+/// The key assertion is not decoration here, and it is the opposite case to
+/// `rotate_secret` above: that handler declares `@NoIdempotency` and ignores
+/// the key, while this one sits under a class-level
+/// `@RequireIdempotencyKey()` with no opt-out — so a request without the
+/// header is a **428** in production, and a visitor gets no greeting at all.
+///
+/// `start-conversation` is hyphenated and the id comes FIRST, unlike
+/// `tickets().open_count` below.
+#[test]
+fn starting_a_conversation_sends_only_the_contact_id_in_the_path() {
+    let mock = expect(
+        OBJ,
+        |c| c.visitors().start_conversation("cont_1"),
+        "POST",
+        "/v1/visitors/cont_1/start-conversation",
+    );
+    let request = mock.only_request();
+    assert_eq!(
+        request.body, None,
+        "the handler has no @Body(); an empty JSON object is not the same as no body"
+    );
+    assert!(
+        !request.url.contains('?'),
+        "the handler has no @Query() either: {}",
+        request.url
+    );
+    assert!(
+        request.header("idempotency-key").is_some(),
+        "@RequireIdempotencyKey() is on the class with no opt-out here — \
+         without the header this route answers 428"
+    );
+}
+
 /// `open-count` puts the literal segment BEFORE the id, and the id is a
 /// conversation's.
 #[test]

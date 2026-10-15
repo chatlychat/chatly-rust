@@ -137,6 +137,15 @@ impl ChatlyClient {
         resources::Triggers::new(self)
     }
 
+    /// Visitors: open a conversation with a contact who has not written.
+    ///
+    /// One method only. The two reads on the same controller
+    /// (`/v1/visitors/live` and `/v1/visitors/{contactId}/pages`) are not
+    /// key-accessible, so they are deliberately absent.
+    pub fn visitors(&self) -> resources::Visitors<'_> {
+        resources::Visitors::new(self)
+    }
+
     /// Webhooks: the subscriptions, the event and schema-version
     /// catalogues, and the delivery log. Note the two resources share a
     /// prefix — an endpoint is `/v1/webhooks/{id}`, a delivery is

@@ -77,7 +77,7 @@ impl BodyShape {
     }
 }
 
-/// What `ns.name` answers with, for all 162 manifest methods.
+/// What `ns.name` answers with, for all 163 manifest methods.
 ///
 /// ═══ READ THIS BEFORE CHANGING A VALUE ══════════════════════════════════
 ///
@@ -333,6 +333,15 @@ pub fn shape_for(ns: &str, name: &str) -> Option<BodyShape> {
         ("triggers", "delete") => Object,
         // The third page the manifest once missed.
         ("triggers", "list") => Page,
+
+        // `{ conversationId }`, read off the service return type —
+        // `VisitorsService.startProactiveConversation(): Promise<{
+        // conversationId: string }>` — because this handler carries no
+        // `@ZodResponse` at all. An object, and emphatically not a page:
+        // a derived `Page` here would read a one-key object as an empty
+        // page and hand it back with a 200, which is this crate's own
+        // historical bug rather than a hypothetical one.
+        ("visitors", "start_conversation") => Object,
 
         ("webhooks", "create") => Object,
         ("webhooks", "deliveries") => Page,

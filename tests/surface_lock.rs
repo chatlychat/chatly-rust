@@ -1,6 +1,6 @@
 //! Generates and verifies `surface.lock.json`.
 //!
-//! The lock is **executed evidence**. Each of the 162 entries in
+//! The lock is **executed evidence**. Each of the 163 entries in
 //! `packages/sdk-spec/surface.json` is produced by actually invoking the
 //! corresponding method against an injected transport and recording the
 //! `METHOD /path` the client built. Interpolated path segments are folded
@@ -35,7 +35,7 @@
 //!   for it, or drops the row the fake sent, or
 //! - the regenerated lock differs from the manifest, shape column included.
 //!
-//! The invocation table itself lives in `tests/common/invocations.rs`: 162
+//! The invocation table itself lives in `tests/common/invocations.rs`: 163
 //! closures and the assertions that drive them do not fit in one file under
 //! the contract's 650-line ceiling (§9).
 //!
@@ -190,7 +190,7 @@ fn the_surface_lock_is_regenerated_and_matches_the_manifest() {
 
     let table = invocations();
 
-    // 1. The table and the manifest must name the same 162 methods. Checked
+    // 1. The table and the manifest must name the same 163 methods. Checked
     //    both ways, so neither a new manifest entry nor a stale closure can
     //    slip through.
     let manifest_keys: BTreeMap<(String, String), &ManifestEntry> = manifest
@@ -329,13 +329,16 @@ fn the_surface_lock_is_regenerated_and_matches_the_manifest() {
 
     // 2d. And a floor on the surface itself, for the same reason: every
     //     assertion above is satisfied by a manifest that parsed to three
-    //     rows. 162 is the whole surface as of 2026-10-14 — it was 159 for
-    //     part of that day, and `root.me`, `webhooks.delete` and
-    //     `workspace.mine` landed in the manifest while this SDK was being
-    //     finished.
+    //     rows. 163 is the whole surface as of 2026-10-14 — it was 159 for
+    //     part of that day, then `root.me`, `webhooks.delete` and
+    //     `workspace.mine` landed while this SDK was being finished, then
+    //     `visitors.start_conversation` opened to API keys later the same
+    //     day. A ratchet: raise it with the surface, never lower it to make
+    //     a red run green. The message used to name 159 while the assertion
+    //     tested 162, which would have misdirected whoever hit it.
     assert!(
-        manifest.entries.len() >= 162,
-        "the manifest parsed to {} entries; expected at least 159. Either rows \
+        manifest.entries.len() >= 163,
+        "the manifest parsed to {} entries; expected at least 163. Either rows \
          stopped parsing or the surface shrank on purpose — if the latter, \
          lower this floor in the same commit and say why.",
         manifest.entries.len()

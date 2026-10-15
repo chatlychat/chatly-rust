@@ -146,28 +146,79 @@ impl<'a> Bots<'a> {
     }
 
     /// `POST /v1/bots/{id}/external/rotate-secret` — issue a new signing
-    /// secret and return it once.
+    /// secret, effective immediately, and return it once.
     ///
-    /// **There is no overlap window.** The old secret stops verifying the
-    /// moment this returns, so deploy the new one to your verifier before
-    /// calling this, not after — any delivery in flight during the gap fails
-    /// your signature check and retries into the ladder.
+    /// **This form is the hard cut.** It sends no body, and the old secret
+    /// stops signing the moment this returns, so deploy the new one to your
+    /// verifier before calling this, not after — any delivery in flight
+    /// during the gap fails your signature check and retries into the
+    /// ladder. For an overlap window use [`Bots::rotate_external_secret_at`].
     ///
-    /// Takes no body. Answers **201**.
+    /// Answers **201** with `{ "signingSecret": "…", "activatesAt": null }`.
+    /// `activatesAt` is `null` when the new secret is already signing, which
+    /// is always the case here.
     ///
     /// # Errors
     ///
     /// Any [`ChatlyError`]; [`ChatlyError::NotFound`] if the bot is not an
     /// external agent.
     pub fn rotate_external_secret(&self, id: &str) -> Result<Value, ChatlyError> {
-        self.client.write::<Value>(
+        self.rotate(id, None)
+    }
+
+    /// `POST /v1/bots/{id}/external/rotate-secret` with
+    /// `{ "activateAt": "…" }` — issue a new signing secret that starts
+    /// signing at `activate_at`, and return it once.
+    ///
+    /// `activate_at` is an ISO 8601 instant with a `Z` or an offset
+    /// (`2026-10-16T09:00:00.000Z`, `2026-10-16T11:00:00+02:00`), passed
+    /// through verbatim — the server validates it. **Until that instant the
+    /// OLD secret keeps signing every delivery**; from it, the new one does.
+    /// There is one signature per delivery, never two, so your verifier
+    /// should hold both secrets for the window — call
+    /// [`crate::verify_webhook_signature`] with one and, if that fails, the
+    /// other — and drop the old one once the switch has passed.
+    ///
+    /// - More than 168 hours ahead of the **server's** clock is a
+    ///   [`ChatlyError::Validation`]. This SDK does not check the bound
+    ///   itself, because your clock is not the one that counts.
+    /// - An instant already in the past is a hard cut, not an error.
+    /// - On an agent with no usable secret today it is also a hard cut.
+    ///
+    /// Answers **201** with `{ "signingSecret": "…", "activatesAt": … }`:
+    /// a string is the instant the switch happens; `null` means the new
+    /// secret is already signing (the two hard-cut cases above).
+    ///
+    /// # Errors
+    ///
+    /// Any [`ChatlyError`]; [`ChatlyError::Validation`] for a malformed or
+    /// too-distant instant; [`ChatlyError::NotFound`] if the bot is not an
+    /// external agent.
+    pub fn rotate_external_secret_at(
+        &self,
+        id: &str,
+        activate_at: &str,
+    ) -> Result<Value, ChatlyError> {
+        self.rotate(id, Some(activate_at))
+    }
+
+    /// The one request both rotate forms build. No `activate_at` means **no
+    /// body at all** — not `{}` — which is exactly what the hard cut has
+    /// always sent.
+    fn rotate(&self, id: &str, activate_at: Option<&str>) -> Result<Value, ChatlyError> {
+        let body = activate_at.map(|at| {
+            let mut body = serde_json::Map::new();
+            body.insert("activateAt".to_owned(), Value::String(at.to_owned()));
+            Value::Object(body)
+        });
+        self.client.write(
             "POST",
             &format!(
                 "/v1/bots/{}/external/rotate-secret",
                 encode_path_segment(id)
             ),
             &Query::new(),
-            None,
+            body.as_ref(),
         )
     }
 

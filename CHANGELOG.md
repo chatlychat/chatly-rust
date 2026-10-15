@@ -5,6 +5,23 @@ All notable changes to the Rust SDK. This project follows
 
 ## Unreleased
 
+### `bots().rotate_external_secret_at` — rotation with an overlap window
+
+`POST /v1/bots/{id}/external/rotate-secret` takes an optional
+`{"activateAt": "<ISO 8601 instant>"}` now, and
+`rotate_external_secret_at(id, activate_at)` sends it: the old secret keeps
+signing every delivery until that instant, so a verifier holding both never
+sees a failed signature. The string goes through verbatim; the server owns
+the 168-hour bound and treats a past instant as a hard cut.
+
+`rotate_external_secret(id)` is unchanged, on the wire as well as in source:
+it still sends no body at all (not `{}`) and is still the hard cut. A sibling
+method rather than an `Option` parameter because Rust has no default
+arguments, and an added `Option` would have broken every existing caller.
+Both answer `{ signingSecret, activatesAt }`; `activatesAt: null` means the
+new secret is already signing. `tests/bots_rotate.rs` asserts the recorded
+request for both forms.
+
 ### The whole manifest: 107 more methods, 55 → 162
 
 `packages/sdk-spec/surface.json` lists 162 key-accessible routes and this

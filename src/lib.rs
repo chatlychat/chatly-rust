@@ -125,7 +125,7 @@ pub use resources::{
     Ai, Billing, BotRoutes, Bots, Brands, BulkContactsInput, CanvasSteps, Channels, ContactInput,
     Contacts, Conversations, CustomerCardEndpoints, CustomerCards, DocsSources, EmailTemplates,
     EventInput, Events, Kb, KnowledgeGaps, Macros, MessageInput, MessageKind, Reports, Search,
-    Tickets, Triggers, Webhooks, Workspace, AGENT_HANDLING_SETTABLE_STATES, AI_PROVIDERS,
+    Tickets, Triggers, Visitors, Webhooks, Workspace, AGENT_HANDLING_SETTABLE_STATES, AI_PROVIDERS,
     ATTRIBUTION_DIMENSIONS, CHANNEL_TYPES, CUSTOMER_CARD_CAP, DELIVERY_STATUSES, DOCS_PROVIDERS,
     EMAIL_TEMPLATE_KINDS, GAP_STATUSES, MACRO_ACTION_KEYS, MACRO_LIBRARY_CAP, MACRO_SCOPES,
     ROUTE_CONDITION_OPS, SEARCH_KINDS, TICKET_BULK_ACTIONS, TRIGGER_CONDITION_OPS,
