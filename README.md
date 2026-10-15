@@ -328,6 +328,93 @@ verify_webhook_signature_with(&body, signature, &secret,
 Only do that for stored deliveries. On a live endpoint it accepts a replay of
 anything ever captured from the wire.
 
+### Every other signed surface: `verify_chatly_signature`
+
+Chatly signs eight kinds of outbound request, and the header name does not
+tell you which construction it is: three surfaces send `x-chatly-signature`
+and sign three different strings, and two send their timestamp in
+MILLISECONDS. So you name the surface, and the verifier owns the rest.
+
+| surface                   | header                                                | signed string                   | unit    |
+| ------------------------- | ----------------------------------------------------- | ------------------------------- | ------- |
+| `unified_v2`              | `x-chatly-signature-v2: t=…,v1=…`                     | `<t>.<METHOD>.<path>.<rawBody>` | seconds |
+| `agent_delivery`          | `x-chatly-signature: t=…,v1=…`                        | `<t>.<rawBody>`                 | seconds |
+| `event_webhook`           | `x-livechat-signature: t=…,v1=…`                      | `<t>.<rawBody>`                 | seconds |
+| `ai_tool_call`            | `x-chatly-signature: t=…,v1=…`                        | `<t>.<METHOD>.<path>.<rawBody>` | seconds |
+| `canvas_step`             | `x-chatly-canvas-signature: sha256=…` + `-ts`         | `<ts>.<rawBody>`                | **ms**  |
+| `customer_card`           | `x-chatly-signature: sha256=…` + `x-chatly-timestamp` | `<ts>.<rawBody>`                | **ms**  |
+| `workflow_webhook`        | `x-chatly-signature-v2: t=…,v1=…`                     | `<t>.<rawBody>`                 | seconds |
+| `workflow_webhook_legacy` | `x-chatly-signature: sha256=…`                        | `<rawBody>` — no timestamp      | n/a     |
+
+```rust
+use chatly::{verify_chatly_signature, ChatlySignatureInput, ChatlySignatureResult,
+             ChatlySignatureSurface};
+
+// axum: `headers: HeaderMap, method: Method, uri: Uri, body: Bytes`
+let pairs: Vec<(&str, &str)> = headers
+    .iter()
+    .filter_map(|(k, v)| v.to_str().ok().map(|v| (k.as_str(), v)))
+    .collect();
+// A server-side `Uri` is the request-target in origin form —
+// `/hooks/chatly?tenant=a` — which is exactly the `pathname + search` signed.
+let path = uri.to_string();
+
+let result = verify_chatly_signature(
+    &ChatlySignatureInput::new(ChatlySignatureSurface::AgentDelivery, &body)
+        .headers(pairs)
+        .secret(&current_secret)
+        .secret(&previous_secret)          // mid-rotation: both are live
+        .target(method.as_str(), &path),   // lets the v2 header be used when it appears
+);
+match result {
+    ChatlySignatureResult::Verified(ok) => {
+        // ok.secret_index says which secret matched — 0 here means the
+        // previous one is no longer in use and can be retired.
+    }
+    ChatlySignatureResult::Refused(why) => {
+        eprintln!("{}: {}", why.reason, why.message);   // e.g. timestamp_outside_tolerance
+        return StatusCode::UNAUTHORIZED;
+    }
+}
+```
+
+What it does, and why:
+
+- **A reason, not a `bool`.** `why.reason` is one of eleven stable
+  snake_case values (`missing_secret`, `duplicate_signature_header`,
+  `timestamp_outside_tolerance`, `signature_mismatch`, …) and `why.message`
+  is written to be logged. "Your clock is wrong" and "your secret is wrong"
+  no longer look the same.
+- **Headers are `(name, value)` pairs**, matched case-insensitively, and a
+  signature header that arrives twice is refused as
+  `duplicate_signature_header` rather than trial-verified — a proxy added
+  one, and picking either is a guess.
+- **Key rotation at both ends.** Several `.secret(…)` calls, and
+  `secret_index` indexes them in the order given (an empty string is skipped
+  but still counts as a slot). A header carrying several `v1=` digests
+  verifies when any one matches.
+- **`v2`.** Every surface is moving to `x-chatly-signature-v2` over
+  `<t>.<METHOD>.<path>.<rawBody>`, sent beside its legacy header. The default
+  `ChatlyV2Policy::Prefer` verifies the v2 header whenever it is present and
+  you passed `.target(method, path)`, and never falls back to the legacy
+  header once it has chosen v2. `Require` refuses without v2; `Ignore` reads
+  the legacy header only. On success via v2, `ok.surface` is `UnifiedV2`.
+- **300 seconds in both directions**, exactly 300 allowed;
+  `.tolerance_seconds(n)` changes it. A timestamp that does not fit in 64
+  bits is `malformed_timestamp`.
+- **`workflow_webhook_legacy` is refused by default** (`replay_unprotected`):
+  it signs the body with no timestamp, so a captured request verifies
+  forever. Verify the same call's `x-chatly-signature-v2` as
+  `workflow_webhook` instead, or opt in with
+  `.allow_unprotected_replay(true)` and make the endpoint idempotent.
+- **Never panics**, for any header, body, clock or secret. Digests are
+  shape-checked before decoding and compared in constant time, lengths
+  first.
+
+Its behaviour is pinned by `tests/fixtures/signature_vectors.json`, the same
+corpus every Chatly backend SDK runs. `verify_webhook_signature` above is
+unchanged; for `event_webhook` the two agree.
+
 ---
 
 ## Widget identity verification

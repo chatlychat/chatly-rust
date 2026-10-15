@@ -46,6 +46,8 @@
 //!   raw `body`.
 //! - **Auto-pagination.** [`PageIter`] walks cursors for you and cannot spin
 //!   forever on a repeated cursor.
+//! - **Signature verification for every surface Chatly signs**
+//!   ([`verify_chatly_signature`]), returning a stable reason on refusal.
 //! - **Webhook verification** ([`verify_webhook_signature`]) and **widget
 //!   identity hashing** ([`identity_hash`]), neither of which needs a
 //!   client.
@@ -104,6 +106,10 @@ mod pagination;
 mod query;
 pub mod resources;
 mod retry;
+mod signature_input;
+mod signature_parse;
+mod signature_table;
+mod signatures;
 mod transport;
 mod webhooks;
 
@@ -115,6 +121,15 @@ pub use identity::identity_hash;
 pub use pagination::{Page, PageIter};
 pub use query::Query;
 pub use retry::RetryPolicy;
+pub use signature_input::{
+    ChatlySignatureInput, ChatlySignatureRefusal, ChatlySignatureResult, ChatlySignatureVerified,
+};
+pub use signature_table::{
+    ChatlySignatureBase, ChatlySignatureFailure, ChatlySignatureSurface, ChatlyV2Policy,
+    SignatureFormat, SurfaceSpec, TimestampFrom, TimestampUnit, UnknownSurface,
+    CHATLY_SIGNATURE_TOLERANCE_SECONDS, CHATLY_V2_SIGNATURE_HEADER,
+};
+pub use signatures::verify_chatly_signature;
 pub use transport::{HttpRequest, HttpResponse, Transport, UreqTransport};
 pub use webhooks::{
     verify_webhook_signature, verify_webhook_signature_with, VerifyOptions,

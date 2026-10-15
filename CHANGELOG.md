@@ -5,6 +5,32 @@ All notable changes to the Rust SDK. This project follows
 
 ## Unreleased
 
+### `verify_chatly_signature` — one verifier for every signed surface
+
+A port of sdk-node's `verifyChatlySignature`. You name the surface
+(`ChatlySignatureSurface`, or its snake_case name as a string), pass the raw
+body, the headers as `(name, value)` pairs and every live secret, and get
+`ChatlySignatureResult::Verified { surface, timestamp_ms, base, secret_index }`
+or `Refused { surface, reason, message }`, where `reason` is one of eleven
+stable `ChatlySignatureFailure` values. Covers all eight surfaces, the unified
+`x-chatly-signature-v2` construction with the `Prefer`/`Require`/`Ignore`
+policy and its `b=` base marker, key rotation at both ends, and the two
+millisecond surfaces. Also exports `CHATLY_SIGNATURE_TOLERANCE_SECONDS`,
+`CHATLY_V2_SIGNATURE_HEADER` and the table itself (`ChatlySignatureSurface::spec`).
+
+No new dependency: it reuses the std HMAC-SHA256 and constant-time compare in
+`src/crypto.rs`. `tests/signatures.rs` runs every vector in
+`tests/fixtures/signature_vectors.json` — the corpus shared byte-for-byte with
+the other seven backend SDKs — asserting every expected field and a non-empty
+message on every refusal, with a 59-vector floor, plus never-panic sweeps over
+garbage headers, bodies, clocks and tolerances. Two deliberate differences from
+the TypeScript, both on inputs the corpus does not reach: a timestamp that does
+not fit a `u64` as milliseconds is `malformed_timestamp` (JavaScript reads it as
+a float and refuses it on time instead), and the tolerance is a `u64`, so
+"no window" is `u64::MAX` rather than `Infinity`.
+
+`verify_webhook_signature` is unchanged.
+
 ### `bots().rotate_external_secret_at` — rotation with an overlap window
 
 `POST /v1/bots/{id}/external/rotate-secret` takes an optional
