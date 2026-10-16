@@ -107,6 +107,7 @@ mod query;
 pub mod resources;
 mod retry;
 mod signature_input;
+mod signature_mint;
 mod signature_parse;
 mod signature_table;
 mod signatures;
@@ -123,6 +124,9 @@ pub use query::Query;
 pub use retry::RetryPolicy;
 pub use signature_input::{
     ChatlySignatureInput, ChatlySignatureRefusal, ChatlySignatureResult, ChatlySignatureVerified,
+};
+pub use signature_mint::{
+    chatly_v2_base_string, sign_chatly_v2, ChatlyV2Mint, ChatlyV2MintBase, ChatlyV2MintError,
 };
 pub use signature_table::{
     ChatlySignatureBase, ChatlySignatureFailure, ChatlySignatureSurface, ChatlyV2Policy,
